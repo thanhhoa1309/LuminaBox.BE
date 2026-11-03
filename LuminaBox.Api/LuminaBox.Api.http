@@ -1,0 +1,65 @@
+@LuminaBox.Api_HostAddress = http://localhost:5155
+@accessToken = 
+@refreshToken = 
+
+### Register
+POST {{LuminaBox.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "Test User",
+  "email": "testuser@example.com",
+  "password": "Password1!",
+  "confirmPassword": "Password1!",
+  "phone": "0901234567",
+  "address": "123 Test Street"
+}
+
+### Verify OTP (replace otpCode from server log)
+POST {{LuminaBox.Api_HostAddress}}/api/auth/verify-otp
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "otpCode": "000000"
+}
+
+### Login
+POST {{LuminaBox.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "testuser@example.com",
+  "password": "Password1!"
+}
+
+### Get current user
+GET {{LuminaBox.Api_HostAddress}}/api/users/me
+Authorization: Bearer {{accessToken}}
+
+### Update current user
+PUT {{LuminaBox.Api_HostAddress}}/api/users/me
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "fullName": "Test User Updated",
+  "phone": "0912345678",
+  "address": "456 New Street"
+}
+
+### Logout
+POST {{LuminaBox.Api_HostAddress}}/api/auth/logout
+Authorization: Bearer {{accessToken}}
+
+### Login validation error
+POST {{LuminaBox.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "fullName": "",
+  "email": "bad",
+  "password": "short",
+  "confirmPassword": "mismatch",
+  "phone": "123"
+}

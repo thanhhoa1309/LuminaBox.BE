@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
+  <Project Path="LuminaBox.Api/LuminaBox.Api.csproj" />
+  <Project Path="LuminaBox.Application/LuminaBox.Application.csproj" />
+  <Project Path="LuminaBox.Domain/LuminaBox.Domain.csproj" />
+  <Project Path="LuminaBox.Infrastructure/LuminaBox.Infrastructure.csproj" />
+</Solution>

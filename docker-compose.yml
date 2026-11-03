@@ -1,0 +1,34 @@
+services:
+  luminabox.db:
+    image: postgres:16-alpine
+    container_name: luminabox-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: LuminaBoxDb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - luminabox-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d LuminaBoxDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  luminabox.api:
+    ports:
+      - "5000:8080"
+    image: ${DOCKER_REGISTRY-}luminaboxapi
+    build:
+      context: .
+      dockerfile: LuminaBox.Api/Dockerfile
+    environment:
+      - ConnectionStrings__DefaultConnection=Host=luminabox.db;Port=5432;Database=LuminaBoxDb;Username=postgres;Password=postgres
+    depends_on:
+      luminabox.db:
+        condition: service_healthy
+
+volumes:
+  luminabox-db-data:

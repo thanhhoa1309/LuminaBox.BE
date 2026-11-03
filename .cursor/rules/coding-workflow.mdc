@@ -1,0 +1,51 @@
+---
+description: Quy trình 4 bước bắt buộc khi code (Bối cảnh → Output → Thực hiện → Test)
+alwaysApply: true
+---
+
+# Quy trình code bắt buộc (4 bước)
+
+Mọi yêu cầu viết/sửa code PHẢI đi đúng thứ tự 4 bước dưới đây. Không được bỏ bước, không được gộp bước.
+Trả lời dev bằng tiếng Việt. Câu hỏi thuần giải thích (không đụng code) thì không cần đi qua quy trình.
+
+## Bước 1: Bối cảnh
+- Đọc code liên quan (Domain, Application, Infrastructure, API) trước khi kết luận.
+- Phân tích rõ yêu cầu: mục tiêu, phạm vi, entity/bảng/API bị ảnh hưởng.
+- Phản hồi cho dev:
+  - **Bối cảnh logic**: luồng xử lý hiện tại và luồng mới sẽ như thế nào.
+  - **Vấn đề**: điểm chưa rõ, rủi ro, xung đột với code hiện có, câu hỏi cần dev trả lời.
+
+## Bước 2: Output (đề xuất & duyệt)
+- Dựa trên Bước 1, trình bày kế hoạch cụ thể:
+  - Danh sách file sẽ tạo/sửa (theo từng layer).
+  - Endpoint (method, route, request/response DTO, status code) nếu có API.
+  - Thay đổi DB/migration nếu có.
+- Điều chỉnh kế hoạch theo phản hồi của dev.
+- **DỪNG LẠI và chờ dev duyệt** (ví dụ: "OK", "duyệt", "làm đi"). Chưa được viết code khi chưa có xác nhận.
+
+## Bước 3: Thực hiện code
+- Chỉ code đúng phạm vi đã duyệt ở Bước 2.
+- Tuân thủ cấu trúc và convention sẵn có của project (`ApiResult`, `ErrorHelper`, `JwtUtils`, `PasswordHash`...).
+- Nếu trong lúc code phát sinh thay đổi ngoài kế hoạch (thêm file, đổi schema, đổi contract API, đổi logic):
+  - **Dừng lại**, thông báo cho dev: thay đổi gì, vì sao, ảnh hưởng gì.
+  - **Chờ duyệt** rồi mới tiếp tục.
+
+## Bước 4: Test
+- Hoàn thành mỗi API phải test trước khi báo xong:
+  - `dotnet build` không lỗi.
+  - Gọi thử endpoint (qua `MoonCake.API/MoonCake.API.http`, Swagger hoặc `curl`) với ca thành công và ca lỗi (validate sai, không có quyền, không tìm thấy dữ liệu).
+- Báo cáo kết quả test: request đã gửi, response/status code nhận được, lỗi (nếu có) và cách đã xử lý.
+- Không được báo "hoàn thành" khi chưa test hoặc test còn lỗi.
+
+## Mẫu phản hồi
+```
+### Bước 1 – Bối cảnh
+- Yêu cầu: ...
+- Logic hiện tại / logic mới: ...
+- Vấn đề cần làm rõ: ...
+
+### Bước 2 – Output
+- File thay đổi: ...
+- API: POST /api/... → 200 / 400 / 401
+- ⏸ Chờ duyệt trước khi code.
+```

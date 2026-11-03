@@ -1,0 +1,269 @@
+---
+description: Convention tạo CRUD theo thứ tự DTOs → Interface → Service → Controller
+alwaysApply: true
+---
+
+# Convention code CRUD
+
+Khi tạo chức năng cho một entity, PHẢI tạo theo đúng thứ tự dưới đây, xong bước trước mới sang bước sau.
+Ví dụ dùng entity `CakeCategory`; thay bằng tên entity thực tế.
+
+## Bước 1: DTOs — `MoonCake.Application/DTOs/{Entity}/`
+| Loại | Tên class |
+|------|-----------|
+| Output | `{Entity}Response` → `CakeCategoryResponse` |
+| Tạo mới | `Create{Entity}Request` → `CreateCakeCategoryRequest` |
+| Cập nhật | `Update{Entity}Request` → `UpdateCakeCategoryRequest` |
+
+- DTO chỉ chứa property, không chứa logic mapping hay validation.
+- **Validations** — validate dữ liệu đầu vào (Request DTO):
+  `MoonCake.Application/Validations/{Entity}/`
+  `Create{Entity}RequestValidator`, `Update{Entity}RequestValidator`.
+  Chỉ rule bắt buộc, độ dài, format, khoảng giá trị.
+  Chạy tự động trước khi vào controller; service và controller không gọi validator.
+- **Jobs** — xử lý theo lịch hoặc side-effect nghiệp vụ (hủy overdue, auto-reject, overlap…):
+  `MoonCake.Application/Jobs/{Entity}/` (chỉ tạo folder entity khi có nội dung).
+  Service inject và gọi khi cần; đăng ký DI scoped trong `IocContainer.SetupBusinessServicesLayer`.
+  Hosted worker (`Infrastructure/BackgroundJobs`) gọi service/job theo lịch (ví dụ 00:00 VN).
+
+### Update là cập nhật một phần (partial update)
+Client chỉ gửi field muốn đổi; field không gửi / `null` / chuỗi rỗng / chỉ khoảng trắng thì **giữ nguyên giá trị cũ**.
+- `Update{Entity}Request`: **mọi property đều nullable** (`string?`, `decimal?`, `int?`, `Guid?`, `{Enum}?`...), không có default.
+- KHÔNG `Trim()` dữ liệu khi update; có giá trị thì lưu đúng như client gửi.
+- Không xóa được giá trị qua API Update (gửi `""` cũng là giữ nguyên).
+- `Update{Entity}RequestValidator`: KHÔNG dùng `NotEmpty()` / rule "bắt buộc"; mỗi rule gắn
+  `.When(x => !string.IsNullOrWhiteSpace(x.Field))` (kiểu số / enum / Guid dùng `.When(x => x.Field.HasValue)`).
+- Body rỗng `{}` hợp lệ, trả về dữ liệu hiện tại.
+- `Create{Entity}Request` vẫn giữ kiểu bắt buộc như bình thường.
+
+```csharp
+public class UpdateCakeCategoryRequest
+{
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+}
+
+public class UpdateCakeCategoryRequestValidator : AbstractValidator<UpdateCakeCategoryRequest>
+{
+    public UpdateCakeCategoryRequestValidator()
+    {
+        RuleFor(x => x.Name)
+            .MaximumLength(100).WithMessage("Name must not exceed 100 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Name));
+
+        RuleFor(x => x.Description)
+            .MaximumLength(1000).WithMessage("Description must not exceed 1000 characters.")
+            .When(x => !string.IsNullOrWhiteSpace(x.Description));
+    }
+}
+```
+
+## Bước 2: Interface — `MoonCake.Application/Interfaces/I{Entity}Service.cs`
+- Tên method bắt buộc:
+
+```csharp
+public interface ICakeCategoryService
+{
+    Task<Pagination<CakeCategoryResponse>> GetAllAsync(
+        string? search,
+        string? sortBy,
+        bool isDescending,
+        int page,
+        int pageSize,
+        CakeCategoryStatus? status = null);
+    Task<CakeCategoryResponse> GetCakeCategoryByDetail(Guid id);
+    Task<CakeCategoryResponse> CreateCakeCategoryAsync(CreateCakeCategoryRequest request);
+    Task<CakeCategoryResponse> UpdateCakeCategoryAsync(Guid id, UpdateCakeCategoryRequest request);
+    Task DeleteCakeCategoryAsync(Guid id);
+}
+```
+
+- `GetAllAsync` (và mọi method có phân trang) **bắt buộc** khai báo tham số theo đúng thứ tự, mỗi tham số một dòng:
+  1. `string? search`
+  2. `string? sortBy`
+  3. `bool isDescending`
+  4. `int page`
+  5. `int pageSize`
+  6. Các filter riêng của entity (status, khoảng ngày, id cha...), luôn nullable và có default `= null`.
+- Trả về `Pagination<{Entity}Response>`.
+- KHÔNG nhận `PaginationParameter` trực tiếp ở interface; service tự tạo `PaginationParameter` từ `page`, `pageSize`.
+
+## Bước 3: Service — `MoonCake.Application/Services/{Entity}Service.cs`
+- Trả response bằng cách project thẳng `new {Entity}Response { ... }` (`.Select(...)` trên query).
+  KHÔNG dùng AutoMapper, KHÔNG viết hàm mapping riêng (`MapToResponse`, `ToDto`...).
+- KHÔNG dùng `try/catch`. Lỗi nghiệp vụ thì `throw ErrorHelper.NotFound(...)`, `ErrorHelper.Conflict(...)`...
+  để `GlobalExceptionMiddleware` xử lý.
+- KHÔNG validate input trong service. Chỉ giữ check nghiệp vụ cần DB (không tồn tại, trùng tên...).
+- Truy cập dữ liệu qua `IUnitOfWork`; xóa dùng `SoftRemove`.
+- `GetAllAsync`: tạo `PaginationParameter` → áp filter → đếm tổng → sắp xếp → `Skip/Take` → `.Select(new {Entity}Response)`.
+  - Sắp xếp bằng `switch` trên `sortBy?.Trim().ToLowerInvariant()`; giá trị không khớp thì mặc định theo `CreatedAt`.
+  - Mọi nhánh sắp xếp đều tôn trọng `isDescending`.
+
+```csharp
+public async Task<Pagination<CakeCategoryResponse>> GetAllAsync(
+    string? search,
+    string? sortBy,
+    bool isDescending,
+    int page,
+    int pageSize,
+    CakeCategoryStatus? status = null)
+{
+    var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
+
+    var query = _unitOfWork.CakeCategories.GetQueryable().AsNoTracking();
+
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        var keyword = search.Trim().ToLower();
+        query = query.Where(c => c.Name.ToLower().Contains(keyword));
+    }
+
+    if (status.HasValue)
+        query = query.Where(c => c.Status == status.Value);
+
+    var totalCount = await query.CountAsync();
+
+    query = sortBy?.Trim().ToLowerInvariant() switch
+    {
+        "name" => isDescending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name),
+        _ => isDescending ? query.OrderByDescending(c => c.CreatedAt) : query.OrderBy(c => c.CreatedAt)
+    };
+
+    var items = await query
+        .Skip((pagination.PageIndex - 1) * pagination.PageSize)
+        .Take(pagination.PageSize)
+        .Select(c => new CakeCategoryResponse { Id = c.Id, Name = c.Name, Description = c.Description })
+        .ToListAsync();
+
+    return new Pagination<CakeCategoryResponse>(items, totalCount, pagination.PageIndex, pagination.PageSize);
+}
+```
+
+```csharp
+// ❌ BAD
+try { var entity = ...; return MapToResponse(entity); } catch (Exception ex) { ... }
+if (string.IsNullOrEmpty(request.Name)) throw ErrorHelper.BadRequest("Name is required");
+
+// ✅ GOOD
+var category = await _unitOfWork.CakeCategories.GetByIdAsync(id)
+    ?? throw ErrorHelper.NotFound("Cake category not found.");
+return new CakeCategoryResponse { Id = category.Id, Name = category.Name, Description = category.Description };
+```
+
+- `Update{Entity}Async`: chỉ gán khi field có giá trị (`!string.IsNullOrWhiteSpace(...)` / `.HasValue`) **và** khác giá trị cũ;
+  không `Trim()`. Check nghiệp vụ theo field (vd. trùng tên/mã) chỉ chạy khi giá trị thay đổi, so sánh không phân biệt
+  hoa thường và loại trừ chính bản ghi đang sửa.
+
+```csharp
+public async Task<CakeCategoryResponse> UpdateCakeCategoryAsync(Guid id, UpdateCakeCategoryRequest request)
+{
+    var category = await _unitOfWork.CakeCategories.GetByIdAsync(id)
+        ?? throw ErrorHelper.NotFound("Cake category not found.");
+
+    if (!string.IsNullOrWhiteSpace(request.Name) &&
+        !category.Name.Equals(request.Name, StringComparison.OrdinalIgnoreCase))
+    {
+        var name = request.Name.ToLower();
+
+        if (await _unitOfWork.CakeCategories.GetQueryable().AnyAsync(c => c.Id != id && c.Name.ToLower() == name))
+            throw ErrorHelper.Conflict($"Cake category with name '{request.Name}' already exists.");
+
+        category.Name = request.Name;
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.Description) && category.Description != request.Description)
+        category.Description = request.Description;
+
+    await _unitOfWork.CakeCategories.Update(category);
+    await _unitOfWork.SaveChangesAsync();
+
+    return new CakeCategoryResponse { Id = category.Id, Name = category.Name, Description = category.Description };
+}
+```
+
+- Đăng ký DI trong `IocContainer.SetupBusinessServicesLayer`.
+
+## Bước 4: Controller — `MoonCake.API/Controllers/{Entity số nhiều}Controller.cs`
+- Tên controller số nhiều: `CakeCategoriesController`.
+- Route kebab-case số nhiều: `[Route("api/cake-categories")]`, có `[ApiController]`.
+- KHÔNG dùng `try/catch`. Controller chỉ gọi service và bọc kết quả bằng `ApiResult<T>.Success(...)`.
+
+| Action | HTTP | Route | Service method |
+|--------|------|-------|----------------|
+| GetAll | GET | `api/cake-categories` | `GetAllAsync` |
+| Get theo id | GET | `api/cake-categories/{id}` | `GetCakeCategoryByDetail` |
+| Tạo | POST | `api/cake-categories` | `CreateCakeCategoryAsync` |
+| Cập nhật | PUT | `api/cake-categories/{id}` | `UpdateCakeCategoryAsync` |
+| Xóa | DELETE | `api/cake-categories/{id}` | `DeleteCakeCategoryAsync` |
+
+- **Authorize** — mỗi action phải khai báo rõ ai được gọi (`using Microsoft.AspNetCore.Authorization;`):
+  - Public: không gắn `[Authorize]`.
+  - Chỉ cần đăng nhập: `[Authorize]`.
+  - Theo role: `[Authorize(Roles = "...")]` — tên role khớp `UserRole` (`User`, `Manager`, `Organization`).
+  - Nhiều role: `Roles = "Manager,Organization"` (OR — đủ một role là được).
+  - Có thể gắn ở class (áp dụng mọi action) hoặc từng action; action ghi đè class khi cần role khác.
+  - Dùng `Roles`, **không** dùng `Policy = "..."`.
+
+| Attribute | Role được phép | Câu cuối `Description` |
+|-----------|----------------|------------------------|
+| *(không có)* | Public | *(không thêm)* |
+| `[Authorize]` | Mọi user đã đăng nhập | `Requires authentication.` |
+| `Roles = "User"` | `User` | `Requires User role.` |
+| `Roles = "Manager"` | `Manager` | `Requires Manager role.` |
+| `Roles = "Organization"` | `Organization` | `Requires Organization role.` |
+| `Roles = "Manager,Organization"` | `Manager` hoặc `Organization` | `Requires Manager or Organization role.` |
+
+- Mỗi action **bắt buộc** có `[SwaggerOperation(Summary = ..., Description = ...)]`
+  (`using Swashbuckle.AspNetCore.Annotations;`). KHÔNG dùng XML comment `/// <summary>` cho action.
+  - Viết bằng tiếng Anh.
+  - `Summary`: một câu ngắn nói API làm gì (`Get cake category details by id`).
+  - `Description`: một câu ngắn nói tính năng đó là gì, **rồi** thêm câu quyền ở cuối theo bảng trên
+    (`Gets the details of a cake category by id. Requires Organization role.`).
+  - KHÔNG viết dài thêm chi tiết nghiệp vụ hay các trường hợp lỗi / status code.
+  - Khi đổi logic/quyền của API phải cập nhật lại `[Authorize(Roles = ...)]` **và** câu cuối `Description` cho khớp.
+- Action phân trang nhận tham số `[FromQuery]` cùng thứ tự với interface, default:
+  `isDescending = true`, `page = 1`, `pageSize = 10`, filter `= null`.
+
+```csharp
+[HttpGet]
+[SwaggerOperation(
+    Summary = "Get paginated list of cake categories",
+    Description = "Gets a paginated list of cake categories with search, filter and sort.")]
+public async Task<IActionResult> GetAll(
+    [FromQuery] string? search,
+    [FromQuery] string? sortBy,
+    [FromQuery] bool isDescending = true,
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] CakeCategoryStatus? status = null)
+{
+    var result = await _cakeCategoryService.GetAllAsync(search, sortBy, isDescending, page, pageSize, status);
+    return Ok(ApiResult<Pagination<CakeCategoryResponse>>.Success(result));
+}
+```
+
+```csharp
+[Authorize(Roles = "Organization")]
+[HttpGet("{id:guid}")]
+[SwaggerOperation(
+    Summary = "Get cake category details by id",
+    Description = "Gets the details of a cake category by id. Requires Organization role.")]
+public async Task<IActionResult> GetCakeCategoryByDetail(Guid id)
+{
+    var result = await _cakeCategoryService.GetCakeCategoryByDetail(id);
+    return Ok(ApiResult<CakeCategoryResponse>.Success(result));
+}
+```
+
+```csharp
+[Authorize]
+[HttpGet("me")]
+[SwaggerOperation(
+    Summary = "Get current user profile",
+    Description = "Gets the profile of the current user. Requires authentication.")]
+public async Task<IActionResult> GetCurrentUser()
+{
+    var result = await _userService.GetCurrentUserAsync();
+    return Ok(ApiResult<UserResponse>.Success(result));
+}
+```

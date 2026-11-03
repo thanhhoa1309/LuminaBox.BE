@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LuminaBox.Domain\LuminaBox.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+	<PackageReference Include="FluentValidation" Version="11.11.0" />
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.11" />
+	<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="8.0.0" />
+	<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Dtos\" />
+    <Folder Include="Interface\" />
+    <Folder Include="Jobs\" />
+    <Folder Include="Commons\" />
+    <Folder Include="Exceptions\" />
+    <Folder Include="Notifications\" />
+    <Folder Include="Validations\" />
+    <Folder Include="Utils\" />
+    <Folder Include="Services\" />
+    <Folder Include="Realtime\" />
+  </ItemGroup>
+
+</Project>
