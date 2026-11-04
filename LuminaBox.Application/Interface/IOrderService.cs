@@ -32,8 +32,6 @@ namespace LuminaBox.Application.Interface
         Task<OrderResponse> RejectOrderAsync(Guid id, RejectOrderRequest request);
         Task<OrderResponse> CancelOrderAsync(Guid id, CancelOrderRequest request);
         Task<OrderResponse> ShipOrderAsync(Guid id);
-        Task<OrderResponse> SyncOrderShippingAsync(Guid id);
         Task<OrderResponse> MarkOrderDeliveredAsync(Guid id);
     }
 }
-

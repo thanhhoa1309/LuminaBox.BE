@@ -145,8 +145,8 @@ namespace LuminaBox.Api.Controllers
         [Authorize(Roles = "Organization")]
         [HttpPost("{id:guid}/ship")]
         [SwaggerOperation(
-            Summary = "Create GHN shipping order",
-            Description = "Creates a GHN waybill and marks the order as delivering. Requires Organization role.")]
+            Summary = "Start delivering order",
+            Description = "Marks a confirmed order as delivering. Requires Organization role.")]
         public async Task<IActionResult> ShipOrder(Guid id)
         {
             var result = await _orderService.ShipOrderAsync(id);
@@ -154,21 +154,10 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
-        [HttpPost("{id:guid}/sync-shipping")]
-        [SwaggerOperation(
-            Summary = "Sync GHN shipping status",
-            Description = "Synchronizes the shipping status of a delivering order from GHN. Requires Organization role.")]
-        public async Task<IActionResult> SyncOrderShipping(Guid id)
-        {
-            var result = await _orderService.SyncOrderShippingAsync(id);
-            return Ok(ApiResult<OrderResponse>.Success(result));
-        }
-
-        [Authorize(Roles = "Organization")]
         [HttpPost("{id:guid}/mark-delivered")]
         [SwaggerOperation(
             Summary = "Mark order as delivered",
-            Description = "Marks a delivering order as delivered. Requires Organization role.")]
+            Description = "Marks a delivering (or confirmed pickup) order as delivered. Requires Organization role.")]
         public async Task<IActionResult> MarkOrderDelivered(Guid id)
         {
             var result = await _orderService.MarkOrderDeliveredAsync(id);
@@ -176,4 +165,3 @@ namespace LuminaBox.Api.Controllers
         }
     }
 }
-

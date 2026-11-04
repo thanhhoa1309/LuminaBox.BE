@@ -21,113 +21,39 @@ namespace LuminaBox.Api.Controllers
         [Authorize]
         [HttpPost("checkout")]
         [SwaggerOperation(
-<<<<<<< HEAD
-            Summary = "Create Stripe checkout session",
-            Description = "Creates a Stripe Checkout Session for a pending payment. Requires authentication.")]
-        public async Task<IActionResult> CreateCheckoutSession([FromBody] CreateCheckoutSessionRequest request)
-        {
-            var result = await _paymentService.CreateCheckoutSessionAsync(request);
-            return Ok(ApiResult<CheckoutSessionResponse>.Success(result));
-=======
             Summary = "Create Stripe checkout session for an order",
             Description = "Creates a Stripe Checkout Session for a pending unpaid order and returns the hosted checkout URL. Requires authentication.")]
         public async Task<IActionResult> CreateCheckout([FromBody] CheckoutRequest request)
         {
             var result = await _paymentService.CreateCheckoutAsync(request.OrderId);
             return Ok(ApiResult<CheckoutResponse>.Success(result));
->>>>>>> main
         }
 
         [Authorize]
         [HttpGet("{id:guid}")]
         [SwaggerOperation(
             Summary = "Get payment details by id",
-<<<<<<< HEAD
-            Description = "Gets the details of a payment by id. Requires authentication.")]
-        public async Task<IActionResult> GetPaymentByDetail(Guid id)
-        {
-            var result = await _paymentService.GetPaymentByDetail(id);
-=======
             Description = "Gets payment details by id for the buyer or the order organizer. Requires authentication.")]
         public async Task<IActionResult> GetPaymentById(Guid id)
         {
             var result = await _paymentService.GetPaymentByIdAsync(id);
->>>>>>> main
             return Ok(ApiResult<PaymentResponse>.Success(result));
         }
 
         [Authorize]
         [HttpPost("{id:guid}/sync")]
         [SwaggerOperation(
-<<<<<<< HEAD
-            Summary = "Sync Stripe payment status",
-            Description = "Synchronizes the payment status from Stripe Checkout Session. Requires authentication.")]
-        public async Task<IActionResult> SyncPayment(Guid id)
-        {
-            var result = await _paymentService.SyncPaymentAsync(id);
-=======
             Summary = "Sync Stripe checkout session status",
             Description = "Asks Stripe for the Checkout Session status and marks the payment Success when paid. Requires authentication.")]
         public async Task<IActionResult> SyncCheckoutSession(Guid id)
         {
             var result = await _paymentService.SyncCheckoutSessionAsync(id);
->>>>>>> main
             return Ok(ApiResult<PaymentResponse>.Success(result));
         }
 
         [Authorize]
         [HttpPatch("{id:guid}/cancel")]
         [SwaggerOperation(
-<<<<<<< HEAD
-            Summary = "Cancel pending payment",
-            Description = "Cancels a pending payment and its associated pending order. Requires authentication.")]
-        public async Task<IActionResult> CancelPayment(Guid id)
-        {
-            var result = await _paymentService.CancelPaymentAsync(id);
-            return Ok(ApiResult<PaymentResponse>.Success(result));
-        }
-
-        [HttpGet("stripe-return")]
-        [SwaggerOperation(
-            Summary = "Handle Stripe checkout return redirect",
-            Description = "Synchronizes payment status when buyer returns from Stripe Checkout.")]
-        public async Task<IActionResult> StripeReturn(
-            [FromQuery(Name = "session_id")] string? sessionId,
-            [FromQuery] Guid? paymentId)
-        {
-            var result = await _paymentService.HandleStripeReturnAsync(sessionId, paymentId);
-            return Ok(ApiResult<PaymentResponse>.Success(result));
-        }
-
-        [HttpGet("stripe-cancel")]
-        [SwaggerOperation(
-            Summary = "Handle Stripe checkout cancel redirect",
-            Description = "Cancels the pending payment when buyer cancels on Stripe Checkout.")]
-        public async Task<IActionResult> StripeCancel(
-            [FromQuery(Name = "session_id")] string? sessionId,
-            [FromQuery] Guid? paymentId)
-        {
-            var result = await _paymentService.HandleStripeCancelAsync(sessionId, paymentId);
-            return Ok(ApiResult<PaymentResponse>.Success(result));
-        }
-
-        [HttpPost("stripe-webhook")]
-        [SwaggerOperation(
-            Summary = "Receive Stripe webhook events",
-            Description = "Processes Stripe webhook events to update payment status.")]
-        public async Task<IActionResult> StripeWebhook()
-        {
-            using var reader = new StreamReader(Request.Body);
-            var payload = await reader.ReadToEndAsync();
-            var signature = Request.Headers["Stripe-Signature"].ToString();
-
-            await _paymentService.HandleStripeWebhookAsync(payload, signature);
-            return Ok(ApiResult.Success(message: "Webhook processed."));
-        }
-    }
-}
-
-=======
             Summary = "Cancel a pending payment",
             Description = "Marks a pending payment as cancelled and cancels the related unpaid order. Requires authentication.")]
         public async Task<IActionResult> CancelPayment(Guid id)
@@ -204,4 +130,3 @@ namespace LuminaBox.Api.Controllers
         }
     }
 }
->>>>>>> main

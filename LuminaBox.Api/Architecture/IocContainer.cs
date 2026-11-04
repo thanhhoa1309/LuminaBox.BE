@@ -47,7 +47,7 @@ namespace LuminaBox.Api.Architecture
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
-            services.AddHttpClient<IGhnShippingService, GhnShippingService>();
+
 
             services.SetupBusinessServicesLayer();
             services.AddHostedService<UnpaidPaymentExpireWorker>();
@@ -101,6 +101,8 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IBoxItemService, BoxItemService>();
             services.AddScoped<IShippingFeeService, ShippingFeeService>();
             services.AddScoped<IGhnClient, GhnClient>();
+            services.AddScoped<ICartService, CartService>();
+            services.AddScoped<IOrderService, OrderService>();
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<IWalletService, WalletService>();
 

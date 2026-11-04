@@ -47,34 +47,38 @@ namespace LuminaBox.Application.Services
                     Id = ci.Id,
                     ItemType = ci.ItemType,
                     OrganizerId = ci.ItemType == OrderItemType.Product
-                        ? ci.Product!.OrganizerId
+                        ? ci.ProductItem!.Product.OrganizerId
                         : ci.BoxItem!.OrganizerId,
                     OrganizerBrandName = ci.ItemType == OrderItemType.Product
-                        ? ci.Product!.Organizer.BrandName
+                        ? ci.ProductItem!.Product.Organizer.BrandName
                         : ci.BoxItem!.Organizer.BrandName,
                     StallId = ci.StallId,
                     StallCode = ci.Stall != null ? ci.Stall.Code : null,
                     StallName = ci.Stall != null ? ci.Stall.Name : null,
-                    ProductId = ci.ProductId,
-                    ProductName = ci.Product != null ? ci.Product.Name : null,
+                    ProductId = ci.ProductItem != null ? ci.ProductItem.ProductId : null,
+                    ProductName = ci.ProductItem != null ? ci.ProductItem.Product.Name : null,
+                    ProductItemId = ci.ProductItemId,
+                    ProductItemName = ci.ProductItem != null ? ci.ProductItem.Name : null,
+                    EggCount = ci.ProductItem != null ? ci.ProductItem.EggCount : null,
+                    Weight = ci.ItemType == OrderItemType.Product
+                        ? ci.ProductItem!.Weight
+                        : ci.BoxItem!.Weight,
                     BoxItemId = ci.BoxItemId,
                     BoxItemName = ci.BoxItem != null ? ci.BoxItem.Name : null,
                     BoxCapacity = ci.BoxItem != null ? ci.BoxItem.Capacity : null,
                     ImageUrl = ci.ItemType == OrderItemType.Product
-                        ? ci.Product!.Images
-                            .OrderByDescending(img => img.IsPrimary)
-                            .ThenBy(img => img.SortOrder)
-                            .Select(img => img.ImageUrl)
+                        ? ci.ProductItem!.Images
+                            .OrderBy(img => img.SortOrder)
+                            .Select(img => img.Url)
                             .FirstOrDefault()
                         : ci.BoxItem!.Images
-                            .OrderByDescending(img => img.IsPrimary)
-                            .ThenBy(img => img.SortOrder)
-                            .Select(img => img.ImageUrl)
+                            .OrderBy(img => img.SortOrder)
+                            .Select(img => img.Url)
                             .FirstOrDefault(),
-                    CategoryId = ci.CategoryId,
-                    CategoryName = ci.Category != null ? ci.Category.Name : null,
-                    FillingId = ci.FillingId,
-                    FillingName = ci.Filling != null ? ci.Filling.Name : null,
+                    CategoryId = ci.ProductItem != null ? ci.ProductItem.CategoryId : null,
+                    CategoryName = ci.ProductItem != null ? ci.ProductItem.Category.Name : null,
+                    FillingId = ci.ProductItem != null ? ci.ProductItem.FillingId : null,
+                    FillingName = ci.ProductItem != null ? ci.ProductItem.Filling.Name : null,
                     Quantity = ci.Quantity,
                     UnitPrice = ci.UnitPrice,
                     Subtotal = ci.UnitPrice * ci.Quantity,
@@ -109,11 +113,15 @@ namespace LuminaBox.Application.Services
         {
             var userId = _claimsService.GetRequiredUserId();
 
-            var product = await _unitOfWork.Products.GetQueryable()
-                .Include(p => p.Organizer)
-                .Include(p => p.Stalls)
-                .FirstOrDefaultAsync(p => p.Id == request.ProductId)
-                ?? throw ErrorHelper.NotFound("Product not found.");
+            var productItem = await _unitOfWork.ProductItems.GetQueryable()
+                .Include(pi => pi.Product)
+                    .ThenInclude(p => p.Organizer)
+                .Include(pi => pi.PriceTiers)
+                .Include(pi => pi.Stocks)
+                .FirstOrDefaultAsync(pi => pi.Id == request.ProductItemId)
+                ?? throw ErrorHelper.NotFound("Product item not found.");
+
+            var product = productItem.Product;
 
             if (product.Status != ProductStatus.Active)
                 throw ErrorHelper.BadRequest("Product is not active for sale.");
@@ -121,70 +129,35 @@ namespace LuminaBox.Application.Services
             if (product.Organizer.Status != OrganizerStatus.Active)
                 throw ErrorHelper.Conflict("Organizer is currently suspended.");
 
-            var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
-                .AnyAsync(r => r.OrganizerId == product.OrganizerId
-                            && r.Type == RegistrationType.Online
-                            && r.Status == RegistrationStatus.Approved);
+            await EnsureOnlineApprovedAsync(product.OrganizerId);
 
-            if (!hasOnlineApproved)
-                throw ErrorHelper.Conflict("Organizer is not authorized for online sales.");
+            var activeStocks = productItem.Stocks.Where(s => s.IsActive).ToList();
+            var selectedStock = ResolveProductStock(activeStocks, request.StallId, productItem.Name);
+            var resolvedStallId = selectedStock.StallId;
 
-            Guid? resolvedStallId;
-            if (product.Stalls.Count == 0)
+            if (resolvedStallId.HasValue)
             {
-                if (request.StallId.HasValue)
-                    throw ErrorHelper.BadRequest("This product is sold online only and does not belong to any stall.");
-
-                resolvedStallId = null;
-            }
-            else if (product.Stalls.Count == 1)
-            {
-                var singleStall = product.Stalls.First();
-                if (request.StallId.HasValue && request.StallId.Value != singleStall.Id)
-                    throw ErrorHelper.BadRequest("Selected stall does not belong to this product.");
-
-                resolvedStallId = singleStall.Id;
-            }
-            else
-            {
-                if (!request.StallId.HasValue)
-                    throw ErrorHelper.BadRequest("StallId is required when product is sold at multiple stalls.");
-
-                if (!product.Stalls.Any(s => s.Id == request.StallId.Value))
-                    throw ErrorHelper.BadRequest("Selected stall does not belong to this product.");
-
-                resolvedStallId = request.StallId.Value;
+                await EnsureActiveStallRentalAsync(product.OrganizerId, resolvedStallId.Value);
             }
 
-            var variant = await _unitOfWork.ProductVariants.GetQueryable()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(v => v.ProductId == product.Id
-                                       && v.CategoryId == request.CategoryId
-                                       && v.FillingId == request.FillingId)
-                ?? throw ErrorHelper.NotFound("Product variant with the selected category and filling not found.");
-
-            var cart = await _unitOfWork.Carts.GetQueryable()
-                .FirstOrDefaultAsync(c => c.UserId == userId);
-
-            if (cart is null)
-            {
-                cart = new Cart { UserId = userId };
-                await _unitOfWork.Carts.AddAsync(cart);
-                await _unitOfWork.SaveChangesAsync();
-            }
+            var cart = await GetOrCreateCartAsync(userId);
 
             var existingItem = await _unitOfWork.CartItems.GetQueryable()
                 .FirstOrDefaultAsync(ci => ci.CartId == cart.Id
                                         && ci.ItemType == OrderItemType.Product
-                                        && ci.ProductId == product.Id
-                                        && ci.CategoryId == request.CategoryId
-                                        && ci.FillingId == request.FillingId
+                                        && ci.ProductItemId == productItem.Id
                                         && ci.StallId == resolvedStallId);
+
+            var targetQuantity = (existingItem?.Quantity ?? 0) + request.Quantity;
+            if (selectedStock.StockQuantity < targetQuantity)
+                throw ErrorHelper.Conflict($"Insufficient stock for '{productItem.Name}'. Available: {selectedStock.StockQuantity}.");
+
+            var unitPrice = ResolveUnitPrice(productItem.Price, productItem.PriceTiers, targetQuantity);
 
             if (existingItem is not null)
             {
-                existingItem.Quantity += request.Quantity;
-                existingItem.UnitPrice = variant.Price;
+                existingItem.Quantity = targetQuantity;
+                existingItem.UnitPrice = unitPrice;
                 await _unitOfWork.CartItems.Update(existingItem);
             }
             else
@@ -193,11 +166,9 @@ namespace LuminaBox.Application.Services
                 {
                     CartId = cart.Id,
                     ItemType = OrderItemType.Product,
-                    ProductId = product.Id,
-                    CategoryId = request.CategoryId,
-                    FillingId = request.FillingId,
-                    Quantity = request.Quantity,
-                    UnitPrice = variant.Price,
+                    ProductItemId = productItem.Id,
+                    Quantity = targetQuantity,
+                    UnitPrice = unitPrice,
                     StallId = resolvedStallId
                 };
                 await _unitOfWork.CartItems.AddAsync(newItem);
@@ -214,7 +185,8 @@ namespace LuminaBox.Application.Services
 
             var box = await _unitOfWork.BoxItems.GetQueryable()
                 .Include(b => b.Organizer)
-                .Include(b => b.Stalls)
+                .Include(b => b.PriceTiers)
+                .Include(b => b.Stocks)
                 .FirstOrDefaultAsync(b => b.Id == request.BoxItemId)
                 ?? throw ErrorHelper.NotFound("Box item not found.");
 
@@ -224,50 +196,18 @@ namespace LuminaBox.Application.Services
             if (box.Organizer.Status != OrganizerStatus.Active)
                 throw ErrorHelper.Conflict("Organizer is currently suspended.");
 
-            var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
-                .AnyAsync(r => r.OrganizerId == box.OrganizerId
-                            && r.Type == RegistrationType.Online
-                            && r.Status == RegistrationStatus.Approved);
+            await EnsureOnlineApprovedAsync(box.OrganizerId);
 
-            if (!hasOnlineApproved)
-                throw ErrorHelper.Conflict("Organizer is not authorized for online sales.");
+            var activeStocks = box.Stocks.Where(s => s.IsActive).ToList();
+            var selectedStock = ResolveBoxStock(activeStocks, request.StallId, box.Name);
+            var resolvedStallId = selectedStock.StallId;
 
-            Guid? resolvedStallId;
-            if (box.Stalls.Count == 0)
+            if (resolvedStallId.HasValue)
             {
-                if (request.StallId.HasValue)
-                    throw ErrorHelper.BadRequest("This box item is sold online only and does not belong to any stall.");
-
-                resolvedStallId = null;
-            }
-            else if (box.Stalls.Count == 1)
-            {
-                var singleStall = box.Stalls.First();
-                if (request.StallId.HasValue && request.StallId.Value != singleStall.Id)
-                    throw ErrorHelper.BadRequest("Selected stall does not belong to this box item.");
-
-                resolvedStallId = singleStall.Id;
-            }
-            else
-            {
-                if (!request.StallId.HasValue)
-                    throw ErrorHelper.BadRequest("StallId is required when box item is sold at multiple stalls.");
-
-                if (!box.Stalls.Any(s => s.Id == request.StallId.Value))
-                    throw ErrorHelper.BadRequest("Selected stall does not belong to this box item.");
-
-                resolvedStallId = request.StallId.Value;
+                await EnsureActiveStallRentalAsync(box.OrganizerId, resolvedStallId.Value);
             }
 
-            var cart = await _unitOfWork.Carts.GetQueryable()
-                .FirstOrDefaultAsync(c => c.UserId == userId);
-
-            if (cart is null)
-            {
-                cart = new Cart { UserId = userId };
-                await _unitOfWork.Carts.AddAsync(cart);
-                await _unitOfWork.SaveChangesAsync();
-            }
+            var cart = await GetOrCreateCartAsync(userId);
 
             var existingItem = await _unitOfWork.CartItems.GetQueryable()
                 .FirstOrDefaultAsync(ci => ci.CartId == cart.Id
@@ -275,10 +215,16 @@ namespace LuminaBox.Application.Services
                                         && ci.BoxItemId == box.Id
                                         && ci.StallId == resolvedStallId);
 
+            var targetQuantity = (existingItem?.Quantity ?? 0) + request.Quantity;
+            if (selectedStock.StockQuantity < targetQuantity)
+                throw ErrorHelper.Conflict($"Insufficient stock for box '{box.Name}'. Available: {selectedStock.StockQuantity}.");
+
+            var unitPrice = ResolveUnitPrice(box.Price, box.PriceTiers, targetQuantity);
+
             if (existingItem is not null)
             {
-                existingItem.Quantity += request.Quantity;
-                existingItem.UnitPrice = box.Price;
+                existingItem.Quantity = targetQuantity;
+                existingItem.UnitPrice = unitPrice;
                 await _unitOfWork.CartItems.Update(existingItem);
             }
             else
@@ -288,8 +234,8 @@ namespace LuminaBox.Application.Services
                     CartId = cart.Id,
                     ItemType = OrderItemType.Box,
                     BoxItemId = box.Id,
-                    Quantity = request.Quantity,
-                    UnitPrice = box.Price,
+                    Quantity = targetQuantity,
+                    UnitPrice = unitPrice,
                     StallId = resolvedStallId
                 };
                 await _unitOfWork.CartItems.AddAsync(newItem);
@@ -309,53 +255,81 @@ namespace LuminaBox.Application.Services
                 .FirstOrDefaultAsync(ci => ci.Id == itemId && ci.Cart.UserId == userId)
                 ?? throw ErrorHelper.NotFound("Cart item not found.");
 
-            if (item.ItemType == OrderItemType.Box && (request.CategoryId.HasValue || request.FillingId.HasValue))
-                throw ErrorHelper.BadRequest("Box cart item does not support changing CategoryId or FillingId.");
+            var targetQuantity = request.Quantity ?? item.Quantity;
 
-            var targetQuantity = request.Quantity.HasValue ? request.Quantity.Value : item.Quantity;
-
-            if (item.ItemType == OrderItemType.Product && (request.CategoryId.HasValue || request.FillingId.HasValue))
+            if (item.ItemType == OrderItemType.Box)
             {
-                var newCategoryId = request.CategoryId ?? item.CategoryId!.Value;
-                var newFillingId = request.FillingId ?? item.FillingId!.Value;
+                if (request.ProductItemId.HasValue)
+                    throw ErrorHelper.BadRequest("Box cart item does not support changing ProductItemId.");
 
-                if (newCategoryId != item.CategoryId || newFillingId != item.FillingId)
-                {
-                    var variant = await _unitOfWork.ProductVariants.GetQueryable()
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(v => v.ProductId == item.ProductId
-                                               && v.CategoryId == newCategoryId
-                                               && v.FillingId == newFillingId)
-                        ?? throw ErrorHelper.NotFound("Product variant with the selected category and filling not found.");
+                var box = await _unitOfWork.BoxItems.GetQueryable()
+                    .Include(b => b.PriceTiers)
+                    .Include(b => b.Stocks)
+                    .FirstOrDefaultAsync(b => b.Id == item.BoxItemId)
+                    ?? throw ErrorHelper.NotFound("Box item not found.");
 
-                    var duplicateItem = await _unitOfWork.CartItems.GetQueryable()
-                        .FirstOrDefaultAsync(ci => ci.Id != item.Id
-                                                && ci.CartId == item.CartId
-                                                && ci.ItemType == OrderItemType.Product
-                                                && ci.ProductId == item.ProductId
-                                                && ci.CategoryId == newCategoryId
-                                                && ci.FillingId == newFillingId
-                                                && ci.StallId == item.StallId);
+                var stock = box.Stocks.FirstOrDefault(s => s.StallId == item.StallId && s.IsActive)
+                    ?? throw ErrorHelper.Conflict($"Box '{box.Name}' is no longer available at the selected stall.");
 
-                    if (duplicateItem is not null)
-                    {
-                        duplicateItem.Quantity += targetQuantity;
-                        duplicateItem.UnitPrice = variant.Price;
-                        await _unitOfWork.CartItems.Update(duplicateItem);
-                        await _unitOfWork.CartItems.SoftRemove(item);
-                        await _unitOfWork.SaveChangesAsync();
+                if (stock.StockQuantity < targetQuantity)
+                    throw ErrorHelper.Conflict($"Insufficient stock for box '{box.Name}'. Available: {stock.StockQuantity}.");
 
-                        return await GetMyCartAsync();
-                    }
+                item.Quantity = targetQuantity;
+                item.UnitPrice = ResolveUnitPrice(box.Price, box.PriceTiers, targetQuantity);
 
-                    item.CategoryId = newCategoryId;
-                    item.FillingId = newFillingId;
-                    item.UnitPrice = variant.Price;
-                }
+                await _unitOfWork.CartItems.Update(item);
+                await _unitOfWork.SaveChangesAsync();
+
+                return await GetMyCartAsync();
             }
 
-            if (request.Quantity.HasValue && item.Quantity != request.Quantity.Value)
-                item.Quantity = request.Quantity.Value;
+            var targetProductItemId = request.ProductItemId ?? item.ProductItemId!.Value;
+
+            var productItem = await _unitOfWork.ProductItems.GetQueryable()
+                .Include(pi => pi.Product)
+                .Include(pi => pi.PriceTiers)
+                .Include(pi => pi.Stocks)
+                .FirstOrDefaultAsync(pi => pi.Id == targetProductItemId)
+                ?? throw ErrorHelper.NotFound("Product item not found.");
+
+            if (productItem.Product.Status != ProductStatus.Active)
+                throw ErrorHelper.BadRequest("Product is not active for sale.");
+
+            var productStock = productItem.Stocks.FirstOrDefault(s => s.StallId == item.StallId && s.IsActive)
+                ?? throw ErrorHelper.Conflict($"Product item '{productItem.Name}' is not available at the selected stall.");
+
+            if (targetProductItemId != item.ProductItemId)
+            {
+                var duplicateItem = await _unitOfWork.CartItems.GetQueryable()
+                    .FirstOrDefaultAsync(ci => ci.Id != item.Id
+                                            && ci.CartId == item.CartId
+                                            && ci.ItemType == OrderItemType.Product
+                                            && ci.ProductItemId == targetProductItemId
+                                            && ci.StallId == item.StallId);
+
+                if (duplicateItem is not null)
+                {
+                    var mergedQuantity = duplicateItem.Quantity + targetQuantity;
+                    if (productStock.StockQuantity < mergedQuantity)
+                        throw ErrorHelper.Conflict($"Insufficient stock for '{productItem.Name}'. Available: {productStock.StockQuantity}.");
+
+                    duplicateItem.Quantity = mergedQuantity;
+                    duplicateItem.UnitPrice = ResolveUnitPrice(productItem.Price, productItem.PriceTiers, mergedQuantity);
+                    await _unitOfWork.CartItems.Update(duplicateItem);
+                    await _unitOfWork.CartItems.SoftRemove(item);
+                    await _unitOfWork.SaveChangesAsync();
+
+                    return await GetMyCartAsync();
+                }
+
+                item.ProductItemId = targetProductItemId;
+            }
+
+            if (productStock.StockQuantity < targetQuantity)
+                throw ErrorHelper.Conflict($"Insufficient stock for '{productItem.Name}'. Available: {productStock.StockQuantity}.");
+
+            item.Quantity = targetQuantity;
+            item.UnitPrice = ResolveUnitPrice(productItem.Price, productItem.PriceTiers, targetQuantity);
 
             await _unitOfWork.CartItems.Update(item);
             await _unitOfWork.SaveChangesAsync();
@@ -375,6 +349,100 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.CartItems.SoftRemove(item);
             await _unitOfWork.SaveChangesAsync();
         }
+
+        private async Task<Cart> GetOrCreateCartAsync(Guid userId)
+        {
+            var cart = await _unitOfWork.Carts.GetQueryable()
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+
+            if (cart is not null)
+                return cart;
+
+            cart = new Cart { UserId = userId };
+            await _unitOfWork.Carts.AddAsync(cart);
+            await _unitOfWork.SaveChangesAsync();
+            return cart;
+        }
+
+        private async Task EnsureOnlineApprovedAsync(Guid organizerId)
+        {
+            var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
+                .AnyAsync(r => r.OrganizerId == organizerId
+                            && r.Type == RegistrationType.Online
+                            && r.Status == RegistrationStatus.Approved);
+
+            if (!hasOnlineApproved)
+                throw ErrorHelper.Conflict("Organizer is not authorized for online sales.");
+        }
+
+        private async Task EnsureActiveStallRentalAsync(Guid organizerId, Guid stallId)
+        {
+            var hasActiveRental = await _unitOfWork.StallRentals.GetQueryable()
+                .AnyAsync(r => r.OrganizerId == organizerId
+                            && r.StallId == stallId
+                            && r.Status == RentalStatus.Active);
+
+            if (!hasActiveRental)
+                throw ErrorHelper.Conflict("The organizer does not have an active rental at the selected stall.");
+        }
+
+        private static StallProductItem ResolveProductStock(
+            List<StallProductItem> activeStocks,
+            Guid? requestedStallId,
+            string itemName)
+        {
+            if (activeStocks.Count == 0)
+                throw ErrorHelper.Conflict($"'{itemName}' is not available for sale.");
+
+            if (requestedStallId.HasValue)
+            {
+                return activeStocks.FirstOrDefault(s => s.StallId == requestedStallId.Value)
+                    ?? throw ErrorHelper.BadRequest($"Selected stall does not sell '{itemName}'.");
+            }
+
+            var onlineStock = activeStocks.FirstOrDefault(s => s.StallId == null);
+            if (onlineStock is not null)
+                return onlineStock;
+
+            if (activeStocks.Count == 1)
+                return activeStocks[0];
+
+            throw ErrorHelper.BadRequest($"StallId is required when '{itemName}' is sold at multiple stalls.");
+        }
+
+        private static StallBoxItem ResolveBoxStock(
+            List<StallBoxItem> activeStocks,
+            Guid? requestedStallId,
+            string boxName)
+        {
+            if (activeStocks.Count == 0)
+                throw ErrorHelper.Conflict($"Box '{boxName}' is not available for sale.");
+
+            if (requestedStallId.HasValue)
+            {
+                return activeStocks.FirstOrDefault(s => s.StallId == requestedStallId.Value)
+                    ?? throw ErrorHelper.BadRequest($"Selected stall does not sell box '{boxName}'.");
+            }
+
+            var onlineStock = activeStocks.FirstOrDefault(s => s.StallId == null);
+            if (onlineStock is not null)
+                return onlineStock;
+
+            if (activeStocks.Count == 1)
+                return activeStocks[0];
+
+            throw ErrorHelper.BadRequest($"StallId is required when box '{boxName}' is sold at multiple stalls.");
+        }
+
+        internal static decimal ResolveUnitPrice(decimal basePrice, IEnumerable<PriceTier> priceTiers, int quantity)
+        {
+            var tierPrice = priceTiers
+                .Where(t => t.MinQuantity <= quantity)
+                .OrderByDescending(t => t.MinQuantity)
+                .Select(t => (decimal?)t.UnitPrice)
+                .FirstOrDefault();
+
+            return tierPrice ?? basePrice;
+        }
     }
 }
-

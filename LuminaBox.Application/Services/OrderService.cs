@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using LuminaBox.Application.Commons;
 using LuminaBox.Application.Dtos.Order;
+using LuminaBox.Application.Dtos.Shipping;
 using LuminaBox.Application.Interface;
 using LuminaBox.Application.Notifications;
 using LuminaBox.Application.Utils;
@@ -15,33 +16,41 @@ namespace LuminaBox.Application.Services
         private readonly IUnitOfWork _unitOfWork;
         private readonly IClaimsService _claimsService;
         private readonly ICurrentTime _currentTime;
-        private readonly IGhnShippingService _ghnShippingService;
-        private readonly IStripePaymentService _stripePaymentService;
+        private readonly IShippingFeeService _shippingFeeService;
+        private readonly IPaymentService _paymentService;
+        private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
 
         public OrderService(
             IUnitOfWork unitOfWork,
             IClaimsService claimsService,
             ICurrentTime currentTime,
-            IGhnShippingService ghnShippingService,
-            IStripePaymentService stripePaymentService,
+            IShippingFeeService shippingFeeService,
+            IPaymentService paymentService,
+            IWalletService walletService,
             INotificationService notificationService)
         {
             _unitOfWork = unitOfWork;
             _claimsService = claimsService;
             _currentTime = currentTime;
-            _ghnShippingService = ghnShippingService;
-            _stripePaymentService = stripePaymentService;
+            _shippingFeeService = shippingFeeService;
+            _paymentService = paymentService;
+            _walletService = walletService;
             _notificationService = notificationService;
         }
 
         public async Task<List<OrderResponse>> CreateOrderAsync(CreateOrderRequest request)
         {
             var userId = _claimsService.GetRequiredUserId();
+            var addressId = request.AddressId ?? request.ShippingAddressId;
+
             return await CreateOrdersInternalAsync(
                 userId,
-                request.ShippingAddressId,
+                addressId,
+                request.FulfillmentType,
                 request.PaymentMethod,
+                request.ReceiverName,
+                request.ReceiverPhone,
                 request.Note,
                 request.Items,
                 request.VoucherIds,
@@ -51,6 +60,7 @@ namespace LuminaBox.Application.Services
         public async Task<List<OrderResponse>> CreateOrderFromCartAsync(CreateOrderFromCartRequest request)
         {
             var userId = _claimsService.GetRequiredUserId();
+            var addressId = request.AddressId ?? request.ShippingAddressId;
 
             var distinctCartItemIds = request.CartItemIds.Distinct().ToList();
 
@@ -79,15 +89,13 @@ namespace LuminaBox.Application.Services
 
                 if (cartItem.ItemType == OrderItemType.Product)
                 {
-                    if (!cartItem.ProductId.HasValue || !cartItem.CategoryId.HasValue || !cartItem.FillingId.HasValue)
-                        throw ErrorHelper.BadRequest("Product cart item is missing variant information.");
+                    if (!cartItem.ProductItemId.HasValue)
+                        throw ErrorHelper.BadRequest("Product cart item is missing ProductItemId.");
 
                     orderItems.Add(new CreateOrderItemRequest
                     {
                         ItemType = OrderItemType.Product,
-                        ProductId = cartItem.ProductId,
-                        CategoryId = cartItem.CategoryId,
-                        FillingId = cartItem.FillingId,
+                        ProductItemId = cartItem.ProductItemId,
                         Quantity = cartItem.Quantity,
                         StallId = cartItem.StallId
                     });
@@ -113,8 +121,11 @@ namespace LuminaBox.Application.Services
 
             return await CreateOrdersInternalAsync(
                 userId,
-                request.ShippingAddressId,
+                addressId,
+                request.FulfillmentType,
                 request.PaymentMethod,
+                request.ReceiverName,
+                request.ReceiverPhone,
                 request.Note,
                 orderItems,
                 request.VoucherIds,
@@ -181,6 +192,7 @@ namespace LuminaBox.Application.Services
                     StallId = o.StallId,
                     StallCode = o.Stall != null ? o.Stall.Code : null,
                     StallName = o.Stall != null ? o.Stall.Name : null,
+                    FulfillmentType = o.FulfillmentType,
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     SubtotalAmount = o.SubtotalAmount,
@@ -193,8 +205,6 @@ namespace LuminaBox.Application.Services
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
                     PaymentStatus = o.Payment != null ? o.Payment.Status : null,
                     PaymentId = o.Payment != null ? o.Payment.Id : null,
-                    GhnOrderCode = o.GhnOrderCode,
-                    GhnStatus = o.GhnStatus,
                     CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();
@@ -270,6 +280,7 @@ namespace LuminaBox.Application.Services
                     StallId = o.StallId,
                     StallCode = o.Stall != null ? o.Stall.Code : null,
                     StallName = o.Stall != null ? o.Stall.Name : null,
+                    FulfillmentType = o.FulfillmentType,
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     SubtotalAmount = o.SubtotalAmount,
@@ -282,8 +293,6 @@ namespace LuminaBox.Application.Services
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
                     PaymentStatus = o.Payment != null ? o.Payment.Status : null,
                     PaymentId = o.Payment != null ? o.Payment.Id : null,
-                    GhnOrderCode = o.GhnOrderCode,
-                    GhnStatus = o.GhnStatus,
                     CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();
@@ -314,23 +323,18 @@ namespace LuminaBox.Application.Services
                         StallId = o.StallId,
                         StallCode = o.Stall != null ? o.Stall.Code : null,
                         StallName = o.Stall != null ? o.Stall.Name : null,
-                        ShippingAddressId = o.ShippingAddressId,
+                        AddressId = o.AddressId,
+                        PickupAddressId = o.PickupAddressId,
+                        FulfillmentType = o.FulfillmentType,
                         ReceiverName = o.ReceiverName,
                         ReceiverPhone = o.ReceiverPhone,
                         ShippingAddress = o.ShippingAddress,
-                        ToProvinceId = o.ToProvinceId,
-                        ToProvinceName = o.ToProvinceName,
-                        ToWardId = o.ToWardId,
-                        ToWardName = o.ToWardName,
-                        AddressDetail = o.AddressDetail,
                         Note = o.Note,
                         SubtotalAmount = o.SubtotalAmount,
                         PlatformDiscount = o.PlatformDiscount,
                         OrganizerDiscount = o.OrganizerDiscount,
                         ShippingFee = o.ShippingFee,
                         TotalAmount = o.TotalAmount,
-                        GhnOrderCode = o.GhnOrderCode,
-                        GhnStatus = o.GhnStatus,
                         Status = o.Status,
                         CreatedAt = o.CreatedAt,
                         ConfirmedAt = o.ConfirmedAt,
@@ -422,7 +426,6 @@ namespace LuminaBox.Application.Services
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
                 .Include(o => o.Payment)
-                .Include(o => o.Commission)
                 .FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw ErrorHelper.NotFound("Order not found.");
 
@@ -455,69 +458,15 @@ namespace LuminaBox.Application.Services
                     ChangedAt = now
                 });
 
+                await _unitOfWork.SaveChangesAsync();
+
                 if (order.Payment is not null &&
                     order.Payment.Method == PaymentMethod.Stripe &&
-                    order.Payment.Status == PaymentStatus.Success &&
-                    order.Commission is null)
+                    order.Payment.Status == PaymentStatus.Success)
                 {
-                    var onlineRegistration = await _unitOfWork.OrganizerRegistrations.GetQueryable()
-                        .AsNoTracking()
-                        .Where(r => r.OrganizerId == order.OrganizerId
-                                 && r.Type == RegistrationType.Online
-                                 && r.Status == RegistrationStatus.Approved
-                                 && r.CommissionRate.HasValue)
-                        .OrderByDescending(r => r.ConfirmedAt ?? r.ReviewedAt ?? r.CreatedAt)
-                        .FirstOrDefaultAsync();
-
-                    var rate = onlineRegistration?.CommissionRate ?? 0m;
-                    var orderAmount = Math.Max(0m, order.SubtotalAmount - order.OrganizerDiscount);
-                    var commissionAmount = Math.Min(orderAmount, Math.Round(orderAmount * rate / 100m, 2, MidpointRounding.AwayFromZero));
-                    var organizerEarning = orderAmount - commissionAmount;
-
-                    var commission = new Commission
-                    {
-                        OrderId = order.Id,
-                        OrganizerId = order.OrganizerId,
-                        OrderAmount = orderAmount,
-                        Rate = rate,
-                        CommissionAmount = commissionAmount,
-                        Status = CommissionStatus.Settled,
-                        SettledAt = now
-                    };
-                    await _unitOfWork.Commissions.AddAsync(commission);
-
-                    var wallet = await _unitOfWork.Wallets.GetQueryable()
-                        .FirstOrDefaultAsync(w => w.UserId == order.Organizer.UserId);
-
-                    if (wallet is null)
-                    {
-                        wallet = new Wallet
-                        {
-                            UserId = order.Organizer.UserId,
-                            AvailableBalance = organizerEarning,
-                            Currency = "VND"
-                        };
-                        await _unitOfWork.Wallets.AddAsync(wallet);
-                    }
-                    else
-                    {
-                        wallet.AvailableBalance += organizerEarning;
-                        await _unitOfWork.Wallets.Update(wallet);
-                    }
-
-                    await _unitOfWork.WalletTransactions.AddAsync(new WalletTransaction
-                    {
-                        WalletId = wallet.Id,
-                        Type = WalletTransactionType.OrderEarning,
-                        Amount = organizerEarning,
-                        BalanceAfter = wallet.AvailableBalance,
-                        OrderId = order.Id,
-                        CommissionId = commission.Id,
-                        Note = $"Order earning settled for order #{order.OrderCode}"
-                    });
+                    await _walletService.SettleOrderEarningAsync(order.Id);
                 }
 
-                await _unitOfWork.SaveChangesAsync();
                 return true;
             });
 
@@ -535,6 +484,7 @@ namespace LuminaBox.Application.Services
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
                 .Include(o => o.Payment)
+                .Include(o => o.Items)
                 .Include(o => o.VoucherUsages)
                     .ThenInclude(vu => vu.Voucher)
                 .FirstOrDefaultAsync(o => o.Id == id)
@@ -546,12 +496,13 @@ namespace LuminaBox.Application.Services
             if (order.Status != OrderStatus.Pending)
                 throw ErrorHelper.Conflict("Only pending orders can be rejected.");
 
-            if (order.Payment is not null &&
-                order.Payment.Method == PaymentMethod.Stripe &&
-                order.Payment.Status == PaymentStatus.Success &&
-                !string.IsNullOrWhiteSpace(order.Payment.TransactionId))
+            var isPaidStripe = order.Payment is not null &&
+                               order.Payment.Method == PaymentMethod.Stripe &&
+                               order.Payment.Status == PaymentStatus.Success;
+
+            if (isPaidStripe)
             {
-                await _stripePaymentService.RefundPaymentAsync(order.Payment.TransactionId);
+                await _paymentService.RefundOrderPaymentAsync(order.Id);
             }
 
             await _unitOfWork.ExecuteTransactionAsync(async () =>
@@ -562,25 +513,18 @@ namespace LuminaBox.Application.Services
                 order.CancelReason = request.Reason;
                 await _unitOfWork.Orders.Update(order);
 
-                if (order.Payment is not null)
+                if (!isPaidStripe && order.Payment is not null && order.Payment.Status == PaymentStatus.Pending)
                 {
-                    if (order.Payment.Method == PaymentMethod.Stripe && order.Payment.Status == PaymentStatus.Success)
-                    {
-                        order.Payment.Status = PaymentStatus.Refunded;
-                        order.Payment.RefundedAt = now;
-                    }
-                    else if (order.Payment.Status == PaymentStatus.Pending)
-                    {
-                        order.Payment.Status = PaymentStatus.Cancelled;
-                    }
-
+                    order.Payment.Status = PaymentStatus.Cancelled;
                     await _unitOfWork.Payments.Update(order.Payment);
                 }
 
-                if (order.Payment is null || order.Payment.Status != PaymentStatus.Refunded)
+                if (!isPaidStripe)
                 {
                     await RestoreOrderVouchersAsync(order, now);
                 }
+
+                await RestoreBoxStockAsync(order);
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
@@ -616,7 +560,7 @@ namespace LuminaBox.Application.Services
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
                 .Include(o => o.Payment)
-                .Include(o => o.Commission)
+                .Include(o => o.Items)
                 .Include(o => o.VoucherUsages)
                     .ThenInclude(vu => vu.Voucher)
                 .FirstOrDefaultAsync(o => o.Id == id)
@@ -646,27 +590,13 @@ namespace LuminaBox.Application.Services
                     throw ErrorHelper.Conflict("Organizer can only cancel pending or confirmed orders.");
             }
 
-            Wallet? organizerWallet = null;
-            decimal reversalAmount = 0m;
+            var isPaidStripe = order.Payment is not null &&
+                               order.Payment.Method == PaymentMethod.Stripe &&
+                               order.Payment.Status == PaymentStatus.Success;
 
-            if (isOrganizer &&
-                order.Commission is not null &&
-                order.Commission.Status == CommissionStatus.Settled)
+            if (isPaidStripe)
             {
-                reversalAmount = order.Commission.OrderAmount - order.Commission.CommissionAmount;
-                organizerWallet = await _unitOfWork.Wallets.GetQueryable()
-                    .FirstOrDefaultAsync(w => w.UserId == order.Organizer.UserId);
-
-                if (organizerWallet is null || organizerWallet.AvailableBalance < reversalAmount)
-                    throw ErrorHelper.Conflict("Insufficient organizer wallet balance to reverse settled order earning.");
-            }
-
-            if (order.Payment is not null &&
-                order.Payment.Method == PaymentMethod.Stripe &&
-                order.Payment.Status == PaymentStatus.Success &&
-                !string.IsNullOrWhiteSpace(order.Payment.TransactionId))
-            {
-                await _stripePaymentService.RefundPaymentAsync(order.Payment.TransactionId);
+                await _paymentService.RefundOrderPaymentAsync(order.Id);
             }
 
             await _unitOfWork.ExecuteTransactionAsync(async () =>
@@ -677,51 +607,18 @@ namespace LuminaBox.Application.Services
                 order.CancelReason = request.Reason;
                 await _unitOfWork.Orders.Update(order);
 
-                var wasRefunded = false;
-
-                if (order.Payment is not null)
+                if (!isPaidStripe && order.Payment is not null && order.Payment.Status == PaymentStatus.Pending)
                 {
-                    if (order.Payment.Method == PaymentMethod.Stripe && order.Payment.Status == PaymentStatus.Success)
-                    {
-                        order.Payment.Status = PaymentStatus.Refunded;
-                        order.Payment.RefundedAt = now;
-                        wasRefunded = true;
-                    }
-                    else if (order.Payment.Status == PaymentStatus.Pending)
-                    {
-                        order.Payment.Status = PaymentStatus.Cancelled;
-                    }
-
+                    order.Payment.Status = PaymentStatus.Cancelled;
                     await _unitOfWork.Payments.Update(order.Payment);
                 }
 
-                if (organizerWallet is not null &&
-                    order.Commission is not null &&
-                    order.Commission.Status == CommissionStatus.Settled)
-                {
-                    organizerWallet.AvailableBalance -= reversalAmount;
-                    await _unitOfWork.Wallets.Update(organizerWallet);
-
-                    order.Commission.Status = CommissionStatus.Pending;
-                    order.Commission.SettledAt = null;
-                    await _unitOfWork.Commissions.Update(order.Commission);
-
-                    await _unitOfWork.WalletTransactions.AddAsync(new WalletTransaction
-                    {
-                        WalletId = organizerWallet.Id,
-                        Type = WalletTransactionType.OrderReversal,
-                        Amount = -reversalAmount,
-                        BalanceAfter = organizerWallet.AvailableBalance,
-                        OrderId = order.Id,
-                        CommissionId = order.Commission.Id,
-                        Note = $"Order earning reversed for cancelled order #{order.OrderCode}"
-                    });
-                }
-
-                if (!wasRefunded)
+                if (!isPaidStripe)
                 {
                     await RestoreOrderVouchersAsync(order, now);
                 }
+
+                await RestoreBoxStockAsync(order);
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
@@ -756,9 +653,6 @@ namespace LuminaBox.Application.Services
 
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
-                .Include(o => o.Payment)
-                .Include(o => o.Items)
-                    .ThenInclude(i => i.BoxSelections)
                 .FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw ErrorHelper.NotFound("Order not found.");
 
@@ -766,26 +660,9 @@ namespace LuminaBox.Application.Services
                 throw ErrorHelper.Forbidden("You do not own this order.");
 
             if (order.Status != OrderStatus.Confirmed)
-                throw ErrorHelper.Conflict("Only confirmed orders can be shipped.");
-
-            var fromAddress = await _unitOfWork.ShippingAddresses.GetQueryable()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.OwnerType == AddressOwnerType.Organizer && a.OwnerId == order.OrganizerId)
-                ?? throw ErrorHelper.Conflict("Organizer pickup address has not been configured.");
-
-            var totalItemQuantity = order.Items.Sum(i =>
-                i.ItemType == OrderItemType.Box
-                    ? i.BoxSelections.Sum(bs => bs.Quantity)
-                    : i.Quantity);
-
-            var (ghnOrderCode, ghnStatus) = await _ghnShippingService.CreateShippingOrderAsync(
-                order,
-                fromAddress,
-                Math.Max(1, totalItemQuantity));
+                throw ErrorHelper.Conflict("Only confirmed orders can be marked as delivering.");
 
             var previousStatus = order.Status;
-            order.GhnOrderCode = ghnOrderCode;
-            order.GhnStatus = ghnStatus;
             order.Status = OrderStatus.Delivering;
             await _unitOfWork.Orders.Update(order);
 
@@ -806,65 +683,6 @@ namespace LuminaBox.Application.Services
             return await GetOrderByDetail(order.Id);
         }
 
-        public async Task<OrderResponse> SyncOrderShippingAsync(Guid id)
-        {
-            var userId = _claimsService.GetRequiredUserId();
-            var now = _currentTime.GetCurrentTime();
-
-            var order = await _unitOfWork.Orders.GetQueryable()
-                .Include(o => o.Organizer)
-                .Include(o => o.Payment)
-                .FirstOrDefaultAsync(o => o.Id == id)
-                ?? throw ErrorHelper.NotFound("Order not found.");
-
-            if (order.Organizer.UserId != userId)
-                throw ErrorHelper.Forbidden("You do not own this order.");
-
-            if (order.Status != OrderStatus.Delivering || string.IsNullOrWhiteSpace(order.GhnOrderCode))
-                throw ErrorHelper.Conflict("Order is not currently delivering with a GHN waybill.");
-
-            var ghnStatus = await _ghnShippingService.GetShippingOrderStatusAsync(order.GhnOrderCode);
-            order.GhnStatus = ghnStatus;
-
-            var deliveredNow = false;
-            if (string.Equals(ghnStatus, "delivered", StringComparison.OrdinalIgnoreCase))
-            {
-                var previousStatus = order.Status;
-                order.Status = OrderStatus.Delivered;
-                order.DeliveredAt = now;
-                deliveredNow = true;
-
-                if (order.Payment is not null &&
-                    order.Payment.Method == PaymentMethod.CashOnDelivery &&
-                    order.Payment.Status == PaymentStatus.Pending)
-                {
-                    order.Payment.Status = PaymentStatus.Success;
-                    order.Payment.PaidAt = now;
-                    await _unitOfWork.Payments.Update(order.Payment);
-                }
-
-                await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
-                {
-                    OrderId = order.Id,
-                    FromStatus = previousStatus,
-                    ToStatus = OrderStatus.Delivered,
-                    ChangedBy = userId,
-                    ChangedAt = now
-                });
-            }
-
-            await _unitOfWork.Orders.Update(order);
-            await _unitOfWork.SaveChangesAsync();
-
-            if (deliveredNow)
-            {
-                await _notificationService.SendAsync(
-                    NotificationCatalog.OrderDelivered(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
-            }
-
-            return await GetOrderByDetail(order.Id);
-        }
-
         public async Task<OrderResponse> MarkOrderDeliveredAsync(Guid id)
         {
             var userId = _claimsService.GetRequiredUserId();
@@ -879,13 +697,13 @@ namespace LuminaBox.Application.Services
             if (order.Organizer.UserId != userId)
                 throw ErrorHelper.Forbidden("You do not own this order.");
 
-            if (order.Status != OrderStatus.Delivering)
-                throw ErrorHelper.Conflict("Only delivering orders can be marked as delivered.");
+            var canDeliverFromConfirmed = order.FulfillmentType == FulfillmentType.Pickup && order.Status == OrderStatus.Confirmed;
+            if (order.Status != OrderStatus.Delivering && !canDeliverFromConfirmed)
+                throw ErrorHelper.Conflict("Only delivering (or confirmed pickup) orders can be marked as delivered.");
 
             var previousStatus = order.Status;
             order.Status = OrderStatus.Delivered;
             order.DeliveredAt = now;
-            order.GhnStatus = "delivered";
             await _unitOfWork.Orders.Update(order);
 
             if (order.Payment is not null &&
@@ -916,8 +734,11 @@ namespace LuminaBox.Application.Services
 
         private async Task<List<OrderResponse>> CreateOrdersInternalAsync(
             Guid userId,
-            Guid shippingAddressId,
+            Guid? addressId,
+            FulfillmentType fulfillmentType,
             PaymentMethod paymentMethod,
+            string? requestReceiverName,
+            string? requestReceiverPhone,
             string? note,
             List<CreateOrderItemRequest> requestedItems,
             List<Guid>? requestedVoucherIds,
@@ -926,14 +747,64 @@ namespace LuminaBox.Application.Services
         {
             var now = _currentTime.GetCurrentTime();
 
-            var buyerAddress = await _unitOfWork.ShippingAddresses.GetQueryable()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(a => a.Id == shippingAddressId
-                                       && a.OwnerType == AddressOwnerType.User
-                                       && a.OwnerId == userId)
-                ?? throw ErrorHelper.NotFound("Shipping address not found.");
+            Address? buyerAddress = null;
+            string receiverName;
+            string receiverPhone;
+            string? fullShippingAddressText = null;
+
+            if (fulfillmentType == FulfillmentType.Delivery)
+            {
+                if (!addressId.HasValue || addressId.Value == Guid.Empty)
+                    throw ErrorHelper.BadRequest("AddressId is required for Delivery orders.");
+
+                buyerAddress = await _unitOfWork.Addresses.GetQueryable()
+                    .AsNoTracking()
+                    .Include(a => a.Ward)
+                        .ThenInclude(w => w.District)
+                            .ThenInclude(d => d.Province)
+                    .FirstOrDefaultAsync(a => a.Id == addressId.Value && a.UserId == userId)
+                    ?? throw ErrorHelper.NotFound("Shipping address not found.");
+
+                if (buyerAddress.Type != AddressType.Shipping)
+                    throw ErrorHelper.BadRequest("Selected address must be a shipping address.");
+
+                receiverName = !string.IsNullOrWhiteSpace(requestReceiverName)
+                    ? requestReceiverName.Trim()
+                    : buyerAddress.ContactName;
+                receiverPhone = !string.IsNullOrWhiteSpace(requestReceiverPhone)
+                    ? requestReceiverPhone.Trim()
+                    : buyerAddress.Phone;
+                fullShippingAddressText =
+                    $"{buyerAddress.AddressLine}, {buyerAddress.Ward.Name}, {buyerAddress.Ward.District.Name}, {buyerAddress.Ward.District.Province.Name}";
+            }
+            else
+            {
+                var buyerUser = await _unitOfWork.Users.GetQueryable()
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.Id == userId)
+                    ?? throw ErrorHelper.NotFound("User not found.");
+
+                if (addressId.HasValue && addressId.Value != Guid.Empty)
+                {
+                    buyerAddress = await _unitOfWork.Addresses.GetQueryable()
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(a => a.Id == addressId.Value && a.UserId == userId);
+                }
+
+                receiverName = !string.IsNullOrWhiteSpace(requestReceiverName)
+                    ? requestReceiverName.Trim()
+                    : (buyerAddress?.ContactName ?? buyerUser.FullName);
+                receiverPhone = !string.IsNullOrWhiteSpace(requestReceiverPhone)
+                    ? requestReceiverPhone.Trim()
+                    : (buyerAddress?.Phone ?? buyerUser.Phone ?? string.Empty);
+
+                if (string.IsNullOrWhiteSpace(receiverPhone))
+                    throw ErrorHelper.BadRequest("ReceiverPhone is required when user profile has no phone number.");
+            }
 
             var preparedLines = new List<PreparedOrderLine>();
+            var requiredProductStock = new Dictionary<(Guid ProductItemId, Guid? StallId), int>();
+            var requiredBoxStock = new Dictionary<(Guid BoxItemId, Guid? StallId), int>();
 
             for (var itemIdx = 0; itemIdx < requestedItems.Count; itemIdx++)
             {
@@ -945,11 +816,13 @@ namespace LuminaBox.Application.Services
 
                 if (reqItem.ItemType == OrderItemType.Product)
                 {
-                    var product = await _unitOfWork.Products.GetQueryable()
-                        .Include(p => p.Organizer)
-                        .Include(p => p.Stalls)
-                        .FirstOrDefaultAsync(p => p.Id == reqItem.ProductId)
-                        ?? throw ErrorHelper.NotFound($"Product '{reqItem.ProductId}' not found.");
+                    var productItem = await ResolveProductItemAsync(
+                        reqItem.ProductItemId,
+                        reqItem.ProductId,
+                        reqItem.CategoryId,
+                        reqItem.FillingId);
+
+                    var product = productItem.Product;
 
                     if (product.Status != ProductStatus.Active)
                         throw ErrorHelper.BadRequest($"Product '{product.Name}' is not active for sale.");
@@ -957,49 +830,24 @@ namespace LuminaBox.Application.Services
                     if (product.Organizer.Status != OrganizerStatus.Active)
                         throw ErrorHelper.Conflict($"Organizer '{product.Organizer.BrandName}' is currently suspended.");
 
-                    var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
-                        .AnyAsync(r => r.OrganizerId == product.OrganizerId
-                                    && r.Type == RegistrationType.Online
-                                    && r.Status == RegistrationStatus.Approved);
+                    await EnsureOnlineApprovedAsync(product.OrganizerId, product.Organizer.BrandName);
 
-                    if (!hasOnlineApproved)
-                        throw ErrorHelper.Conflict($"Organizer '{product.Organizer.BrandName}' is not authorized for online sales.");
+                    var activeStocks = productItem.Stocks.Where(s => s.IsActive).ToList();
+                    var selectedStock = ResolveProductStock(activeStocks, reqItem.StallId, productItem.Name);
+                    var resolvedStallId = selectedStock.StallId;
 
-                    Guid? resolvedStallId;
-                    if (product.Stalls.Count == 0)
-                    {
-                        if (reqItem.StallId.HasValue)
-                            throw ErrorHelper.BadRequest($"Product '{product.Name}' is sold online only and does not belong to any stall.");
+                    if (resolvedStallId.HasValue)
+                        await EnsureActiveStallRentalAsync(product.OrganizerId, resolvedStallId.Value);
 
-                        resolvedStallId = null;
-                    }
-                    else if (product.Stalls.Count == 1)
-                    {
-                        var singleStall = product.Stalls.First();
-                        if (reqItem.StallId.HasValue && reqItem.StallId.Value != singleStall.Id)
-                            throw ErrorHelper.BadRequest($"Selected stall does not belong to product '{product.Name}'.");
+                    if (fulfillmentType == FulfillmentType.Pickup && !resolvedStallId.HasValue)
+                        throw ErrorHelper.BadRequest($"Product '{product.Name}' is sold online only and cannot be picked up at a stall.");
 
-                        resolvedStallId = singleStall.Id;
-                    }
-                    else
-                    {
-                        if (!reqItem.StallId.HasValue)
-                            throw ErrorHelper.BadRequest($"StallId is required for product '{product.Name}'.");
+                    var stockKey = (productItem.Id, resolvedStallId);
+                    requiredProductStock[stockKey] = requiredProductStock.GetValueOrDefault(stockKey) + reqItem.Quantity;
 
-                        if (!product.Stalls.Any(s => s.Id == reqItem.StallId.Value))
-                            throw ErrorHelper.BadRequest($"Selected stall does not belong to product '{product.Name}'.");
-
-                        resolvedStallId = reqItem.StallId.Value;
-                    }
-
-                    var variant = await _unitOfWork.ProductVariants.GetQueryable()
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(v => v.ProductId == product.Id
-                                               && v.CategoryId == reqItem.CategoryId
-                                               && v.FillingId == reqItem.FillingId)
-                        ?? throw ErrorHelper.NotFound($"Product variant not found for product '{product.Name}'.");
-
-                    var unitPrice = hasCartSnapshotPrice ? resolvedCartPrice : variant.Price;
+                    var unitPrice = hasCartSnapshotPrice
+                        ? resolvedCartPrice
+                        : CartService.ResolveUnitPrice(productItem.Price, productItem.PriceTiers, reqItem.Quantity);
 
                     preparedLines.Add(new PreparedOrderLine
                     {
@@ -1008,11 +856,11 @@ namespace LuminaBox.Application.Services
                         OrganizerBrandName = product.Organizer.BrandName,
                         StallId = resolvedStallId,
                         ItemType = OrderItemType.Product,
+                        ProductItemId = productItem.Id,
                         ProductId = product.Id,
-                        CategoryId = reqItem.CategoryId,
-                        FillingId = reqItem.FillingId,
+                        CategoryId = productItem.CategoryId,
+                        FillingId = productItem.FillingId,
                         Quantity = reqItem.Quantity,
-                        CakeCount = reqItem.Quantity,
                         UnitPrice = unitPrice,
                         Subtotal = unitPrice * reqItem.Quantity
                     });
@@ -1021,8 +869,8 @@ namespace LuminaBox.Application.Services
                 {
                     var box = await _unitOfWork.BoxItems.GetQueryable()
                         .Include(b => b.Organizer)
-                        .Include(b => b.Stalls)
-                        .Include(b => b.Products)
+                        .Include(b => b.PriceTiers)
+                        .Include(b => b.Stocks)
                         .FirstOrDefaultAsync(b => b.Id == reqItem.BoxItemId)
                         ?? throw ErrorHelper.NotFound($"Box item '{reqItem.BoxItemId}' not found.");
 
@@ -1032,40 +880,20 @@ namespace LuminaBox.Application.Services
                     if (box.Organizer.Status != OrganizerStatus.Active)
                         throw ErrorHelper.Conflict($"Organizer '{box.Organizer.BrandName}' is currently suspended.");
 
-                    var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
-                        .AnyAsync(r => r.OrganizerId == box.OrganizerId
-                                    && r.Type == RegistrationType.Online
-                                    && r.Status == RegistrationStatus.Approved);
+                    await EnsureOnlineApprovedAsync(box.OrganizerId, box.Organizer.BrandName);
 
-                    if (!hasOnlineApproved)
-                        throw ErrorHelper.Conflict($"Organizer '{box.Organizer.BrandName}' is not authorized for online sales.");
+                    var activeBoxStocks = box.Stocks.Where(s => s.IsActive).ToList();
+                    var selectedBoxStock = ResolveBoxStock(activeBoxStocks, reqItem.StallId, box.Name);
+                    var resolvedStallId = selectedBoxStock.StallId;
 
-                    Guid? resolvedStallId;
-                    if (box.Stalls.Count == 0)
-                    {
-                        if (reqItem.StallId.HasValue)
-                            throw ErrorHelper.BadRequest($"Box item '{box.Name}' is sold online only and does not belong to any stall.");
+                    if (resolvedStallId.HasValue)
+                        await EnsureActiveStallRentalAsync(box.OrganizerId, resolvedStallId.Value);
 
-                        resolvedStallId = null;
-                    }
-                    else if (box.Stalls.Count == 1)
-                    {
-                        var singleStall = box.Stalls.First();
-                        if (reqItem.StallId.HasValue && reqItem.StallId.Value != singleStall.Id)
-                            throw ErrorHelper.BadRequest($"Selected stall does not belong to box item '{box.Name}'.");
+                    if (fulfillmentType == FulfillmentType.Pickup && !resolvedStallId.HasValue)
+                        throw ErrorHelper.BadRequest($"Box item '{box.Name}' is sold online only and cannot be picked up at a stall.");
 
-                        resolvedStallId = singleStall.Id;
-                    }
-                    else
-                    {
-                        if (!reqItem.StallId.HasValue)
-                            throw ErrorHelper.BadRequest($"StallId is required for box item '{box.Name}'.");
-
-                        if (!box.Stalls.Any(s => s.Id == reqItem.StallId.Value))
-                            throw ErrorHelper.BadRequest($"Selected stall does not belong to box item '{box.Name}'.");
-
-                        resolvedStallId = reqItem.StallId.Value;
-                    }
+                    var boxStockKey = (box.Id, resolvedStallId);
+                    requiredBoxStock[boxStockKey] = requiredBoxStock.GetValueOrDefault(boxStockKey) + reqItem.Quantity;
 
                     var selections = reqItem.Selections ?? new List<CreateOrderBoxSelectionRequest>();
                     var totalSelectionQty = selections.Sum(s => s.Quantity);
@@ -1075,26 +903,44 @@ namespace LuminaBox.Application.Services
                             $"Total quantity of selections ({totalSelectionQty}) for box '{box.Name}' must equal box capacity ({box.Capacity}).");
                     }
 
-                    var allowedProductIds = box.Products
-                        .Where(p => p.Status == ProductStatus.Active)
-                        .Select(p => p.Id)
-                        .ToHashSet();
+                    var resolvedSelections = new List<ResolvedBoxSelection>();
 
                     foreach (var sel in selections)
                     {
-                        if (!allowedProductIds.Contains(sel.ProductId))
-                            throw ErrorHelper.BadRequest($"Selected product '{sel.ProductId}' does not belong to box '{box.Name}'.");
+                        var selProductItem = await ResolveProductItemAsync(
+                            sel.ProductItemId,
+                            sel.ProductId,
+                            sel.CategoryId,
+                            sel.FillingId);
 
-                        var variantExists = await _unitOfWork.ProductVariants.GetQueryable()
-                            .AnyAsync(v => v.ProductId == sel.ProductId
-                                        && v.CategoryId == sel.CategoryId
-                                        && v.FillingId == sel.FillingId);
+                        if (selProductItem.Product.OrganizerId != box.OrganizerId ||
+                            selProductItem.Product.Status != ProductStatus.Active)
+                        {
+                            throw ErrorHelper.BadRequest(
+                                $"Selected product item '{selProductItem.Name}' does not belong to an active product of organizer '{box.Organizer.BrandName}'.");
+                        }
 
-                        if (!variantExists)
-                            throw ErrorHelper.NotFound($"Product variant not found for box selection product '{sel.ProductId}'.");
+                        var selStock = selProductItem.Stocks.FirstOrDefault(s => s.StallId == resolvedStallId && s.IsActive)
+                            ?? throw ErrorHelper.BadRequest(
+                                $"Selected product item '{selProductItem.Name}' is not available at the same stall as box '{box.Name}'.");
+
+                        var prodStockKey = (selProductItem.Id, resolvedStallId);
+                        requiredProductStock[prodStockKey] =
+                            requiredProductStock.GetValueOrDefault(prodStockKey) + sel.Quantity * reqItem.Quantity;
+
+                        resolvedSelections.Add(new ResolvedBoxSelection
+                        {
+                            ProductItemId = selProductItem.Id,
+                            ProductId = selProductItem.ProductId,
+                            CategoryId = selProductItem.CategoryId,
+                            FillingId = selProductItem.FillingId,
+                            Quantity = sel.Quantity
+                        });
                     }
 
-                    var boxUnitPrice = hasCartSnapshotPrice ? resolvedCartPrice : box.Price;
+                    var boxUnitPrice = hasCartSnapshotPrice
+                        ? resolvedCartPrice
+                        : CartService.ResolveUnitPrice(box.Price, box.PriceTiers, reqItem.Quantity);
 
                     for (var i = 0; i < reqItem.Quantity; i++)
                     {
@@ -1107,12 +953,39 @@ namespace LuminaBox.Application.Services
                             ItemType = OrderItemType.Box,
                             BoxItemId = box.Id,
                             Quantity = 1,
-                            CakeCount = box.Capacity,
                             UnitPrice = boxUnitPrice,
                             Subtotal = boxUnitPrice,
-                            BoxSelections = selections
+                            BoxSelections = resolvedSelections
                         });
                     }
+                }
+            }
+
+            foreach (var ((productItemId, stallId), neededQty) in requiredProductStock)
+            {
+                var stockRow = await _unitOfWork.StallProductItems.GetQueryable()
+                    .Include(s => s.ProductItem)
+                    .FirstOrDefaultAsync(s => s.ProductItemId == productItemId && s.StallId == stallId && s.IsActive)
+                    ?? throw ErrorHelper.Conflict("Selected product item stock is not available.");
+
+                if (stockRow.StockQuantity < neededQty)
+                {
+                    throw ErrorHelper.Conflict(
+                        $"Insufficient stock for '{stockRow.ProductItem.Name}'. Required: {neededQty}, Available: {stockRow.StockQuantity}.");
+                }
+            }
+
+            foreach (var ((boxItemId, stallId), neededQty) in requiredBoxStock)
+            {
+                var stockRow = await _unitOfWork.StallBoxItems.GetQueryable()
+                    .Include(s => s.BoxItem)
+                    .FirstOrDefaultAsync(s => s.BoxItemId == boxItemId && s.StallId == stallId && s.IsActive)
+                    ?? throw ErrorHelper.Conflict("Selected box item stock is not available.");
+
+                if (stockRow.StockQuantity < neededQty)
+                {
+                    throw ErrorHelper.Conflict(
+                        $"Insufficient stock for box '{stockRow.BoxItem.Name}'. Required: {neededQty}, Available: {stockRow.StockQuantity}.");
                 }
             }
 
@@ -1175,15 +1048,7 @@ namespace LuminaBox.Application.Services
 
             foreach (var group in groups)
             {
-                var organizerAddress = await _unitOfWork.ShippingAddresses.GetQueryable()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(a => a.OwnerType == AddressOwnerType.Organizer
-                                           && a.OwnerId == group.Key.OrganizerId)
-                    ?? throw ErrorHelper.Conflict(
-                        $"Organizer '{group.Key.OrganizerBrandName}' has not configured a pickup shipping address.");
-
                 var subtotal = group.Sum(l => l.Subtotal);
-                var totalCakeCount = group.Sum(l => l.CakeCount);
 
                 decimal organizerDiscount = 0m;
                 UserVoucher? appliedOrganizerUv = organizerUserVouchers
@@ -1227,13 +1092,46 @@ namespace LuminaBox.Application.Services
                     platformVoucherConsumed = true;
                 }
 
-                var merchandiseAfterDiscount = Math.Max(0m, subtotal - organizerDiscount - platformDiscount);
-                var shippingFee = await _ghnShippingService.CalculateFeeAsync(
-                    organizerAddress,
-                    buyerAddress,
-                    merchandiseAfterDiscount,
-                    totalCakeCount);
+                decimal shippingFee = 0m;
+                Guid? pickupAddressId = null;
 
+                if (fulfillmentType == FulfillmentType.Delivery)
+                {
+                    var shippingRequest = new ShippingFeeRequest
+                    {
+                        OrganizerId = group.Key.OrganizerId,
+                        StallId = group.Key.StallId,
+                        AddressId = buyerAddress!.Id,
+                        Items = group
+                            .Where(l => l.ItemType == OrderItemType.Product && l.ProductItemId.HasValue)
+                            .Select(l => new ShippingItemRequest
+                            {
+                                ProductItemId = l.ProductItemId!.Value,
+                                Quantity = l.Quantity
+                            })
+                            .ToList(),
+                        Boxes = group
+                            .Where(l => l.ItemType == OrderItemType.Box && l.BoxItemId.HasValue)
+                            .Select(l => new ShippingBoxRequest
+                            {
+                                BoxItemId = l.BoxItemId!.Value,
+                                Selections = (l.BoxSelections ?? new List<ResolvedBoxSelection>())
+                                    .Select(bs => new ShippingItemRequest
+                                    {
+                                        ProductItemId = bs.ProductItemId,
+                                        Quantity = bs.Quantity
+                                    })
+                                    .ToList()
+                            })
+                            .ToList()
+                    };
+
+                    var feeEstimate = await _shippingFeeService.EstimateAsync(shippingRequest);
+                    shippingFee = feeEstimate.Fee;
+                    pickupAddressId = feeEstimate.PickupAddressId;
+                }
+
+                var merchandiseAfterDiscount = Math.Max(0m, subtotal - organizerDiscount - platformDiscount);
                 var totalAmount = merchandiseAfterDiscount + shippingFee;
 
                 groupPlans.Add(new PreparedOrderGroupPlan
@@ -1242,6 +1140,7 @@ namespace LuminaBox.Application.Services
                     OrganizerUserId = group.Key.OrganizerUserId,
                     OrganizerBrandName = group.Key.OrganizerBrandName,
                     StallId = group.Key.StallId,
+                    PickupAddressId = pickupAddressId,
                     SubtotalAmount = subtotal,
                     OrganizerDiscount = organizerDiscount,
                     PlatformDiscount = platformDiscount,
@@ -1265,10 +1164,34 @@ namespace LuminaBox.Application.Services
             var createdOrderIds = new List<Guid>();
             var notificationItems = new List<(Guid OrderId, string OrderCode, Guid OrganizerUserId, string BrandName)>();
 
-            var fullShippingAddressText = $"{buyerAddress.AddressDetail}, {buyerAddress.ToWardName}, {buyerAddress.ToProvinceName}";
-
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
+                foreach (var ((productItemId, stallId), neededQty) in requiredProductStock)
+                {
+                    var stockRow = await _unitOfWork.StallProductItems.GetQueryable()
+                        .FirstOrDefaultAsync(s => s.ProductItemId == productItemId && s.StallId == stallId && s.IsActive)
+                        ?? throw ErrorHelper.Conflict("Selected product item stock is not available.");
+
+                    if (stockRow.StockQuantity < neededQty)
+                        throw ErrorHelper.Conflict("Insufficient product item stock.");
+
+                    stockRow.StockQuantity -= neededQty;
+                    await _unitOfWork.StallProductItems.Update(stockRow);
+                }
+
+                foreach (var ((boxItemId, stallId), neededQty) in requiredBoxStock)
+                {
+                    var stockRow = await _unitOfWork.StallBoxItems.GetQueryable()
+                        .FirstOrDefaultAsync(s => s.BoxItemId == boxItemId && s.StallId == stallId && s.IsActive)
+                        ?? throw ErrorHelper.Conflict("Selected box item stock is not available.");
+
+                    if (stockRow.StockQuantity < neededQty)
+                        throw ErrorHelper.Conflict("Insufficient box item stock.");
+
+                    stockRow.StockQuantity -= neededQty;
+                    await _unitOfWork.StallBoxItems.Update(stockRow);
+                }
+
                 foreach (var plan in groupPlans)
                 {
                     var orderCode = $"ORD{now:yyMMddHHmmss}{Random.Shared.Next(1000, 9999)}";
@@ -1279,15 +1202,12 @@ namespace LuminaBox.Application.Services
                         UserId = userId,
                         OrganizerId = plan.OrganizerId,
                         StallId = plan.StallId,
-                        ShippingAddressId = buyerAddress.Id,
-                        ReceiverName = buyerAddress.ReceiverName,
-                        ReceiverPhone = buyerAddress.ReceiverPhone,
+                        AddressId = fulfillmentType == FulfillmentType.Delivery ? buyerAddress?.Id : null,
+                        PickupAddressId = plan.PickupAddressId,
+                        FulfillmentType = fulfillmentType,
+                        ReceiverName = receiverName,
+                        ReceiverPhone = receiverPhone,
                         ShippingAddress = fullShippingAddressText,
-                        ToProvinceId = buyerAddress.ToProvinceId,
-                        ToProvinceName = buyerAddress.ToProvinceName,
-                        ToWardId = buyerAddress.ToWardId,
-                        ToWardName = buyerAddress.ToWardName,
-                        AddressDetail = buyerAddress.AddressDetail,
                         Note = note,
                         SubtotalAmount = plan.SubtotalAmount,
                         PlatformDiscount = plan.PlatformDiscount,
@@ -1318,14 +1238,17 @@ namespace LuminaBox.Application.Services
 
                         if (line.ItemType == OrderItemType.Box && line.BoxSelections is not null)
                         {
-                            var boxSelections = line.BoxSelections.Select(bs => new OrderBoxSelection
-                            {
-                                OrderItemId = orderItem.Id,
-                                ProductId = bs.ProductId,
-                                CategoryId = bs.CategoryId,
-                                FillingId = bs.FillingId,
-                                Quantity = bs.Quantity
-                            }).ToList();
+                            var boxSelections = line.BoxSelections
+                                .GroupBy(bs => new { bs.ProductId, bs.CategoryId, bs.FillingId })
+                                .Select(g => new OrderBoxSelection
+                                {
+                                    OrderItemId = orderItem.Id,
+                                    ProductId = g.Key.ProductId,
+                                    CategoryId = g.Key.CategoryId,
+                                    FillingId = g.Key.FillingId,
+                                    Quantity = g.Sum(x => x.Quantity)
+                                })
+                                .ToList();
 
                             await _unitOfWork.OrderBoxSelections.AddRangeAsync(boxSelections);
                         }
@@ -1390,6 +1313,128 @@ namespace LuminaBox.Application.Services
             return responses;
         }
 
+        private async Task<ProductItem> ResolveProductItemAsync(
+            Guid? productItemId,
+            Guid? productId,
+            Guid? categoryId,
+            Guid? fillingId)
+        {
+            var query = _unitOfWork.ProductItems.GetQueryable()
+                .Include(pi => pi.Product)
+                    .ThenInclude(p => p.Organizer)
+                .Include(pi => pi.PriceTiers)
+                .Include(pi => pi.Stocks);
+
+            if (productItemId.HasValue && productItemId.Value != Guid.Empty)
+            {
+                return await query.FirstOrDefaultAsync(pi => pi.Id == productItemId.Value)
+                    ?? throw ErrorHelper.NotFound($"Product item '{productItemId}' not found.");
+            }
+
+            if (productId.HasValue && categoryId.HasValue && fillingId.HasValue)
+            {
+                return await query
+                    .OrderBy(pi => pi.CreatedAt)
+                    .FirstOrDefaultAsync(pi => pi.ProductId == productId.Value
+                                            && pi.CategoryId == categoryId.Value
+                                            && pi.FillingId == fillingId.Value)
+                    ?? throw ErrorHelper.NotFound($"Product item not found for product '{productId}'.");
+            }
+
+            throw ErrorHelper.BadRequest("ProductItemId is required.");
+        }
+
+        private async Task EnsureOnlineApprovedAsync(Guid organizerId, string brandName)
+        {
+            var hasOnlineApproved = await _unitOfWork.OrganizerRegistrations.GetQueryable()
+                .AnyAsync(r => r.OrganizerId == organizerId
+                            && r.Type == RegistrationType.Online
+                            && r.Status == RegistrationStatus.Approved);
+
+            if (!hasOnlineApproved)
+                throw ErrorHelper.Conflict($"Organizer '{brandName}' is not authorized for online sales.");
+        }
+
+        private async Task EnsureActiveStallRentalAsync(Guid organizerId, Guid stallId)
+        {
+            var hasActiveRental = await _unitOfWork.StallRentals.GetQueryable()
+                .AnyAsync(r => r.OrganizerId == organizerId
+                            && r.StallId == stallId
+                            && r.Status == RentalStatus.Active);
+
+            if (!hasActiveRental)
+                throw ErrorHelper.Conflict("The organizer does not have an active rental at the selected stall.");
+        }
+
+        private static StallProductItem ResolveProductStock(
+            List<StallProductItem> activeStocks,
+            Guid? requestedStallId,
+            string itemName)
+        {
+            if (activeStocks.Count == 0)
+                throw ErrorHelper.Conflict($"'{itemName}' is not available for sale.");
+
+            if (requestedStallId.HasValue)
+            {
+                return activeStocks.FirstOrDefault(s => s.StallId == requestedStallId.Value)
+                    ?? throw ErrorHelper.BadRequest($"Selected stall does not sell '{itemName}'.");
+            }
+
+            var onlineStock = activeStocks.FirstOrDefault(s => s.StallId == null);
+            if (onlineStock is not null)
+                return onlineStock;
+
+            if (activeStocks.Count == 1)
+                return activeStocks[0];
+
+            throw ErrorHelper.BadRequest($"StallId is required for '{itemName}'.");
+        }
+
+        private static StallBoxItem ResolveBoxStock(
+            List<StallBoxItem> activeStocks,
+            Guid? requestedStallId,
+            string boxName)
+        {
+            if (activeStocks.Count == 0)
+                throw ErrorHelper.Conflict($"Box '{boxName}' is not available for sale.");
+
+            if (requestedStallId.HasValue)
+            {
+                return activeStocks.FirstOrDefault(s => s.StallId == requestedStallId.Value)
+                    ?? throw ErrorHelper.BadRequest($"Selected stall does not sell box '{boxName}'.");
+            }
+
+            var onlineStock = activeStocks.FirstOrDefault(s => s.StallId == null);
+            if (onlineStock is not null)
+                return onlineStock;
+
+            if (activeStocks.Count == 1)
+                return activeStocks[0];
+
+            throw ErrorHelper.BadRequest($"StallId is required for box '{boxName}'.");
+        }
+
+        private async Task RestoreBoxStockAsync(Order order)
+        {
+            var boxCounts = order.Items
+                .Where(i => i.ItemType == OrderItemType.Box && i.BoxItemId.HasValue)
+                .GroupBy(i => i.BoxItemId!.Value)
+                .Select(g => new { BoxItemId = g.Key, Quantity = g.Sum(x => x.Quantity) })
+                .ToList();
+
+            foreach (var boxCount in boxCounts)
+            {
+                var stockRow = await _unitOfWork.StallBoxItems.GetQueryable()
+                    .FirstOrDefaultAsync(s => s.BoxItemId == boxCount.BoxItemId && s.StallId == order.StallId);
+
+                if (stockRow is not null)
+                {
+                    stockRow.StockQuantity += boxCount.Quantity;
+                    await _unitOfWork.StallBoxItems.Update(stockRow);
+                }
+            }
+        }
+
         private async Task ConsumeVoucherAsync(
             UserVoucher userVoucher,
             Guid orderId,
@@ -1443,6 +1488,15 @@ namespace LuminaBox.Application.Services
             }
         }
 
+        private sealed class ResolvedBoxSelection
+        {
+            public Guid ProductItemId { get; set; }
+            public Guid ProductId { get; set; }
+            public Guid CategoryId { get; set; }
+            public Guid FillingId { get; set; }
+            public int Quantity { get; set; }
+        }
+
         private sealed class PreparedOrderLine
         {
             public Guid OrganizerId { get; set; }
@@ -1450,15 +1504,15 @@ namespace LuminaBox.Application.Services
             public string OrganizerBrandName { get; set; } = string.Empty;
             public Guid? StallId { get; set; }
             public OrderItemType ItemType { get; set; }
+            public Guid? ProductItemId { get; set; }
             public Guid? ProductId { get; set; }
             public Guid? BoxItemId { get; set; }
             public Guid? CategoryId { get; set; }
             public Guid? FillingId { get; set; }
             public int Quantity { get; set; }
-            public int CakeCount { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal Subtotal { get; set; }
-            public List<CreateOrderBoxSelectionRequest>? BoxSelections { get; set; }
+            public List<ResolvedBoxSelection>? BoxSelections { get; set; }
         }
 
         private sealed class PreparedOrderGroupPlan
@@ -1467,6 +1521,7 @@ namespace LuminaBox.Application.Services
             public Guid OrganizerUserId { get; set; }
             public string OrganizerBrandName { get; set; } = string.Empty;
             public Guid? StallId { get; set; }
+            public Guid? PickupAddressId { get; set; }
             public decimal SubtotalAmount { get; set; }
             public decimal OrganizerDiscount { get; set; }
             public decimal PlatformDiscount { get; set; }

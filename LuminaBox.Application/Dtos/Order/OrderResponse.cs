@@ -14,23 +14,18 @@ namespace LuminaBox.Application.Dtos.Order
         public Guid? StallId { get; set; }
         public string? StallCode { get; set; }
         public string? StallName { get; set; }
-        public Guid? ShippingAddressId { get; set; }
+        public Guid? AddressId { get; set; }
+        public Guid? PickupAddressId { get; set; }
+        public FulfillmentType FulfillmentType { get; set; }
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
-        public string ShippingAddress { get; set; } = string.Empty;
-        public int ToProvinceId { get; set; }
-        public string ToProvinceName { get; set; } = string.Empty;
-        public int ToWardId { get; set; }
-        public string ToWardName { get; set; } = string.Empty;
-        public string AddressDetail { get; set; } = string.Empty;
+        public string? ShippingAddress { get; set; }
         public string? Note { get; set; }
         public decimal SubtotalAmount { get; set; }
         public decimal PlatformDiscount { get; set; }
         public decimal OrganizerDiscount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal TotalAmount { get; set; }
-        public string? GhnOrderCode { get; set; }
-        public string? GhnStatus { get; set; }
         public OrderStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? ConfirmedAt { get; set; }
@@ -107,4 +102,3 @@ namespace LuminaBox.Application.Dtos.Order
         public DateTime ChangedAt { get; set; }
     }
 }
-

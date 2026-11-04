@@ -1,12 +1,10 @@
 @LuminaBox.Api_HostAddress = http://localhost:5155
 @accessToken = 
 @refreshToken = 
-@productId = 00000000-0000-0000-0000-000000000000
-@categoryId = 00000000-0000-0000-0000-000000000000
-@fillingId = 00000000-0000-0000-0000-000000000000
+@productItemId = 00000000-0000-0000-0000-000000000000
 @boxItemId = 00000000-0000-0000-0000-000000000000
 @cartItemId = 00000000-0000-0000-0000-000000000000
-@shippingAddressId = 00000000-0000-0000-0000-000000000000
+@addressId = 00000000-0000-0000-0000-000000000000
 @orderId = 00000000-0000-0000-0000-000000000000
 @paymentId = 00000000-0000-0000-0000-000000000000
 
@@ -80,15 +78,13 @@ Content-Type: application/json
 GET {{LuminaBox.Api_HostAddress}}/api/carts/me
 Authorization: Bearer {{accessToken}}
 
-### Add product to cart
+### Add product item to cart
 POST {{LuminaBox.Api_HostAddress}}/api/carts/items/product
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "productId": "{{productId}}",
-  "categoryId": "{{categoryId}}",
-  "fillingId": "{{fillingId}}",
+  "productItemId": "{{productItemId}}",
   "quantity": 2
 }
 
@@ -125,15 +121,14 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "shippingAddressId": "{{shippingAddressId}}",
+  "addressId": "{{addressId}}",
+  "fulfillmentType": "Delivery",
   "paymentMethod": "Stripe",
   "note": "Giao giờ hành chính",
   "items": [
     {
       "itemType": "Product",
-      "productId": "{{productId}}",
-      "categoryId": "{{categoryId}}",
-      "fillingId": "{{fillingId}}",
+      "productItemId": "{{productItemId}}",
       "quantity": 2
     }
   ]
@@ -145,7 +140,8 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "shippingAddressId": "{{shippingAddressId}}",
+  "addressId": "{{addressId}}",
+  "fulfillmentType": "Delivery",
   "paymentMethod": "CashOnDelivery",
   "cartItemIds": [
     "{{cartItemId}}"
@@ -170,10 +166,6 @@ Authorization: Bearer {{accessToken}}
 
 ### Ship order (Organizer)
 POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/ship
-Authorization: Bearer {{accessToken}}
-
-### Sync shipping (Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/sync-shipping
 Authorization: Bearer {{accessToken}}
 
 ### Mark order delivered (Organizer)
@@ -208,7 +200,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "paymentId": "{{paymentId}}"
+  "orderId": "{{orderId}}"
 }
 
 ### Get payment details

@@ -1,5 +1,6 @@
 using FluentValidation;
 using LuminaBox.Application.Dtos.Order;
+using LuminaBox.Domain.Enums;
 
 namespace LuminaBox.Application.Validations.Order
 {
@@ -7,8 +8,14 @@ namespace LuminaBox.Application.Validations.Order
     {
         public CreateOrderFromCartRequestValidator()
         {
-            RuleFor(x => x.ShippingAddressId)
-                .NotEmpty().WithMessage("ShippingAddressId is required.");
+            RuleFor(x => x.FulfillmentType)
+                .IsInEnum().WithMessage("Invalid fulfillment type.");
+
+            RuleFor(x => x)
+                .Must(x => x.FulfillmentType == FulfillmentType.Pickup
+                        || (x.AddressId.HasValue && x.AddressId.Value != Guid.Empty)
+                        || (x.ShippingAddressId.HasValue && x.ShippingAddressId.Value != Guid.Empty))
+                .WithMessage("AddressId is required for Delivery orders.");
 
             RuleFor(x => x.PaymentMethod)
                 .IsInEnum().WithMessage("Invalid payment method.");
@@ -30,12 +37,13 @@ namespace LuminaBox.Application.Validations.Order
 
                 box.RuleForEach(b => b.Selections).ChildRules(sel =>
                 {
-                    sel.RuleFor(s => s.ProductId)
-                        .NotEmpty().WithMessage("Selection ProductId is required.");
-                    sel.RuleFor(s => s.CategoryId)
-                        .NotEmpty().WithMessage("Selection CategoryId is required.");
-                    sel.RuleFor(s => s.FillingId)
-                        .NotEmpty().WithMessage("Selection FillingId is required.");
+                    sel.RuleFor(s => s)
+                        .Must(s => (s.ProductItemId.HasValue && s.ProductItemId.Value != Guid.Empty)
+                                || (s.ProductId.HasValue && s.ProductId.Value != Guid.Empty
+                                    && s.CategoryId.HasValue && s.CategoryId.Value != Guid.Empty
+                                    && s.FillingId.HasValue && s.FillingId.Value != Guid.Empty))
+                        .WithMessage("Selection ProductItemId (or ProductId, CategoryId, and FillingId) is required.");
+
                     sel.RuleFor(s => s.Quantity)
                         .GreaterThan(0).WithMessage("Selection Quantity must be greater than 0.");
                 });
@@ -43,4 +51,3 @@ namespace LuminaBox.Application.Validations.Order
         }
     }
 }
-
