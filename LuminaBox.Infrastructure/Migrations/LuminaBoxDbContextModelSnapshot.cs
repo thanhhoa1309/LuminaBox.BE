@@ -258,6 +258,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid>("CartId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CategoryId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -270,6 +273,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("FillingId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -280,8 +286,15 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("StallId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -295,6 +308,10 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasIndex("CartId");
 
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("FillingId");
+
                     b.HasIndex("ProductId");
 
                     b.HasIndex("StallId");
@@ -304,22 +321,27 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasDatabaseName("IX_CartItems_CartId_BoxItemId_Online")
                         .HasFilter("\"IsDeleted\" = false AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NULL");
 
-                    b.HasIndex("CartId", "ProductId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_CartItems_CartId_ProductId_Online")
-                        .HasFilter("\"IsDeleted\" = false AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NULL");
-
                     b.HasIndex("CartId", "BoxItemId", "StallId")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
 
-                    b.HasIndex("CartId", "ProductId", "StallId")
+                    b.HasIndex("CartId", "ProductId", "CategoryId", "FillingId")
                         .IsUnique()
+                        .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Online")
+                        .HasFilter("\"IsDeleted\" = false AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NULL");
+
+                    b.HasIndex("CartId", "ProductId", "CategoryId", "FillingId", "StallId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Stall")
                         .HasFilter("\"IsDeleted\" = false AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
 
                     b.ToTable("CartItems", t =>
                         {
-                            t.HasCheckConstraint("CK_CartItems_ItemType_Target", "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL)");
+                            t.HasCheckConstraint("CK_CartItems_ItemType_Target", "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL AND \"CategoryId\" IS NOT NULL AND \"FillingId\" IS NOT NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"CategoryId\" IS NULL AND \"FillingId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_CartItems_Quantity", "\"Quantity\" > 0");
+
+                            t.HasCheckConstraint("CK_CartItems_UnitPrice", "\"UnitPrice\" > 0");
                         });
                 });
 
@@ -2231,6 +2253,16 @@ namespace LuminaBox.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("LuminaBox.Domain.Entities.CakeCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("LuminaBox.Domain.Entities.Filling", "Filling")
+                        .WithMany()
+                        .HasForeignKey("FillingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
                         .WithMany("CartItems")
                         .HasForeignKey("ProductId")
@@ -2244,6 +2276,10 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("BoxItem");
 
                     b.Navigation("Cart");
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Filling");
 
                     b.Navigation("Product");
 

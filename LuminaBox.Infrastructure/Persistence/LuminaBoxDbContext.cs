@@ -291,21 +291,32 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany(b => b.CartItems)
                     .HasForeignKey(x => x.BoxItemId);
 
+                e.HasOne(x => x.Category)
+                    .WithMany()
+                    .HasForeignKey(x => x.CategoryId);
+
+                e.HasOne(x => x.Filling)
+                    .WithMany()
+                    .HasForeignKey(x => x.FillingId);
+
                 e.HasOne(x => x.Stall)
                     .WithMany(s => s.CartItems)
                     .HasForeignKey(x => x.StallId);
 
                 e.HasIndex(x => x.CartId);
                 e.HasIndex(x => x.StallId);
+                e.HasIndex(x => x.CategoryId);
+                e.HasIndex(x => x.FillingId);
 
-                // Same product/box can appear once per stall; online (StallId null) once per cart
-                e.HasIndex(x => new { x.CartId, x.ProductId, x.StallId })
+                // Same product variant (Category×Filling) once per stall; online once per cart
+                e.HasIndex(x => new { x.CartId, x.ProductId, x.CategoryId, x.FillingId, x.StallId })
                     .IsUnique()
-                    .HasFilter($"{NotDeletedFilter} AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
-                e.HasIndex(x => new { x.CartId, x.ProductId })
+                    .HasFilter($"{NotDeletedFilter} AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NOT NULL")
+                    .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Stall");
+                e.HasIndex(x => new { x.CartId, x.ProductId, x.CategoryId, x.FillingId })
                     .IsUnique()
                     .HasFilter($"{NotDeletedFilter} AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NULL")
-                    .HasDatabaseName("IX_CartItems_CartId_ProductId_Online");
+                    .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Online");
                 e.HasIndex(x => new { x.CartId, x.BoxItemId, x.StallId })
                     .IsUnique()
                     .HasFilter($"{NotDeletedFilter} AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
@@ -318,7 +329,9 @@ namespace LuminaBox.Infrastructure.Persistence
                 {
                     t.HasCheckConstraint(
                         "CK_CartItems_ItemType_Target",
-                        "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL)");
+                        "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL AND \"CategoryId\" IS NOT NULL AND \"FillingId\" IS NOT NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"CategoryId\" IS NULL AND \"FillingId\" IS NULL)");
+                    t.HasCheckConstraint("CK_CartItems_Quantity", "\"Quantity\" > 0");
+                    t.HasCheckConstraint("CK_CartItems_UnitPrice", "\"UnitPrice\" > 0");
                 });
             });
 

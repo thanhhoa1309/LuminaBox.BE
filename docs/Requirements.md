@@ -135,7 +135,7 @@ stateDiagram-v2
 | BR-09 | Snapshot giá vào `OrderItem.UnitPrice` lúc đặt. Dòng hộp: `Quantity = 1`; mua 2 hộp = 2 dòng. Tổng `OrderBoxSelection.Quantity` = `BoxItem.Capacity`. |
 | BR-10 | Product/Box gắn **nhiều stall** (many–many). 0 stall = online-only; 1 stall = auto chọn; ≥2 stall = User phải chọn `StallId` khi thêm giỏ / đặt. |
 | BR-11 | `CakeCategory` và `Filling` thuộc **từng Organizer** (không còn catalog Manager toàn cục). |
-| BR-12 | Cart chỉ lưu “muốn mua gì” (`Product`/`Box` + `StallId`), **không** lưu Quantity / Category / Filling — chọn lúc checkout. |
+| BR-12 | Cart lưu lựa chọn mua: Product → `CategoryId` + `FillingId` + `Quantity` + `UnitPrice` (snapshot từ `ProductVariant`); Box → `Quantity` + `UnitPrice` (từ `BoxItem.Price`), Category/Filling null — selection trong hộp vẫn chọn lúc checkout. Không nhận giá từ client. |
 | BR-13 | Stripe: **một lần checkout chỉ 1 nhóm** (1 organizer + 1 stall). COD tạo Payment kèm order nhưng chưa có luồng checkout riêng. |
 | BR-14 | Phí ship GHN tính lúc tạo order, **User trả**, cộng vào `TotalAmount`. Điểm lấy hàng luôn từ **địa chỉ Organizer** (`ShippingAddress` OwnerType=Organizer), không từ Stall. |
 | BR-15 | Địa chỉ dùng chung entity `ShippingAddress` theo `OwnerType` + `OwnerId`: User nhiều địa chỉ (có `IsDefault`); Organizer / Stall **mỗi bên tối đa 1 địa chỉ**. Stall vẫn giữ `Location` text hiển thị; address GHN dùng cho ship. |
@@ -372,16 +372,18 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 
 ### FLOW 8 – Giỏ hàng (Cart)
 
-**Mục tiêu:** User lưu sản phẩm/hộp muốn mua (chưa chọn biến thể / số lượng).  
+**Mục tiêu:** User lưu sản phẩm/hộp muốn mua kèm biến thể, số lượng và giá snapshot.  
 **Actor:** Auth user.
 
 **Luồng**
 
-1. Thêm product: `ProductId` + optional `StallId` (resolve: 0 stall → null; 1 → auto; nhiều → bắt buộc StallId thuộc product).
-2. Thêm box tương tự.
-3. Trùng `(ItemType, Product/Box, StallId)` → không add trùng.
-4. Xem giỏ nhóm theo Organizer + Stall; giá gợi ý product = `min(variant.Price)`.
-5. Xóa từng dòng. **Không API sửa quantity trên cart** (quantity chọn lúc tạo order).
+1. Thêm product: `ProductId` + `CategoryId` + `FillingId` + `Quantity` + optional `StallId` (resolve stall: 0 → null; 1 → auto; ≥2 → bắt buộc StallId thuộc product). Hệ thống match `ProductVariant` → `UnitPrice = variant.Price` (không nhận giá từ client).
+2. Thêm box: `BoxItemId` + `Quantity` + optional `StallId`; `UnitPrice = BoxItem.Price`. Category/Filling = null; chọn bánh trong hộp lúc checkout.
+3. Trùng cùng khóa unique → cộng dồn `Quantity` (không tạo dòng mới):
+   - Product: `(CartId, ProductId, CategoryId, FillingId, StallId)`
+   - Box: `(CartId, BoxItemId, StallId)`
+4. Xem giỏ nhóm theo Organizer + Stall; dùng `UnitPrice` / `Quantity` đã lưu trên dòng.
+5. Có thể cập nhật `Quantity` (và với Product có thể đổi Category/Filling → re-resolve giá variant). Xóa từng dòng.
 
 **API**
 
@@ -390,6 +392,7 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 | GET | `api/carts/me` |
 | POST | `api/carts/items/product` |
 | POST | `api/carts/items/box` |
+| PUT | `api/carts/items/{itemId}` |
 | DELETE | `api/carts/items/{itemId}` |
 
 ---
@@ -403,7 +406,8 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 
 - `ShippingAddressId` (OwnerType=User của buyer).
 - `PaymentMethod` (`Stripe` | `CashOnDelivery`).
-- Items: với Product gửi `ProductId`, `CategoryId`, `FillingId`, `Quantity`, optional `StallId`; với Box gửi `BoxItemId`, `Selections[{ProductId, CategoryId, FillingId, Quantity}]`, optional `StallId`.
+- `POST /orders` (trực tiếp): Product gửi `ProductId`, `CategoryId`, `FillingId`, `Quantity`, optional `StallId`; Box gửi `BoxItemId`, `Selections[{ProductId, CategoryId, FillingId, Quantity}]`, optional `StallId`.
+- `POST /orders/from-cart`: gửi danh sách `CartItemId` đã chọn (+ địa chỉ / payment / voucher). Product lấy Category/Filling/Quantity/UnitPrice từ cart (có thể re-validate variant còn tồn tại); Box lấy Quantity/UnitPrice từ cart, vẫn cần `Selections` trong request.
 - Optional voucher ids đã claim.
 
 **Luồng chính**
@@ -613,7 +617,7 @@ OrganizerEarning  = OrderAmount − CommissionAmount
 | Organizer | Hồ sơ, address pickup, suspend | 3 | Org, Manager |
 | Catalog | Category, Filling, Product, Variant, Box, Images, gán stall | 5 | Org, Public |
 | Voucher | Platform / Organizer, claim, apply lúc order | 6, 7, 9 | Manager, Org, User |
-| Cart | Thêm product/box + stall, xem, xóa | 8 | User |
+| Cart | Thêm product (C+F+SL) / box + stall, cập nhật SL, xem, xóa | 8 | User |
 | Order | Create / from-cart, confirm/reject/cancel/ship/deliver | 9, 11 | User, Org |
 | Shipping | Provinces/wards/fee, ShippingAddress User | 12 | Auth |
 | Payment | Stripe checkout, webhook, sync, expire job | 10 | User, System |
@@ -653,7 +657,7 @@ OrganizerEarning  = OrderAmount − CommissionAmount
 | # | Nội dung | Trạng thái | Ghi chú |
 |---|---|---|---|
 | 1 | Role Organizer = `Organization` khi duyệt/confirm | Đã chốt + code | |
-| 2 | Entity `Cart` / `CartItem` (không dùng OrderItem nháp) | Đã chốt + code | Cart không lưu qty/category/filling |
+| 2 | Entity `Cart` / `CartItem` (không dùng OrderItem nháp) | Đã chốt + code | Product: Category+Filling+Qty+UnitPrice (variant); Box: Qty+UnitPrice |
 | 3 | Organizer thuê nhiều stall; additional-stalls / additional-online | Đã chốt + code | |
 | 4 | Auto-reject Pending trùng thời gian khi duyệt Stall | Đã chốt + code | |
 | 5 | Hoa hồng chỉ Online; Stall chỉ giá thuê | Đã chốt + code | |
@@ -709,7 +713,7 @@ Organizer
  └── ShippingAddress (OwnerType=Organizer)  ← pickup GHN
 
 User
- ├── Cart → CartItem (Product|Box + StallId?)
+ ├── Cart → CartItem (Product: C+F+Qty+UnitPrice | Box: Qty+UnitPrice + StallId?)
  ├── ShippingAddress * (OwnerType=User)
  ├── Wallet → WalletTransaction
  └── Order * → OrderItem (Category+Filling snapshot) / Payment / Commission
