@@ -82,4 +82,11 @@
         public ExceptionInternalServerError(string message, Exception inner, string? errorCode = null)
             : base(500, message, inner, errorCode) { }
     }
+
+    /// <summary>502 — An external service failed.</summary>
+    public class ExceptionBadGateway : AppException
+    {
+        public ExceptionBadGateway(string message = "An external service failed.", string? errorCode = null)
+            : base(502, message, errorCode) { }
+    }
 }

@@ -9,23 +9,16 @@ namespace LuminaBox.Domain.Entities
 
         public OrderItemType ItemType { get; set; }
 
-        // Exactly one of ProductId / BoxItemId is set, depending on ItemType
-        public Guid? ProductId { get; set; }
-        public Product? Product { get; set; }
+        // Exactly one of ProductItemId / BoxItemId is set, depending on ItemType
+        public Guid? ProductItemId { get; set; }
+        public ProductItem? ProductItem { get; set; }
 
         public Guid? BoxItemId { get; set; }
         public BoxItem? BoxItem { get; set; }
 
-        // Required for Product lines; null for Box lines (box selections chosen at checkout)
-        public Guid? CategoryId { get; set; }
-        public CakeCategory? Category { get; set; }
-
-        public Guid? FillingId { get; set; }
-        public Filling? Filling { get; set; }
-
         public int Quantity { get; set; }
 
-        // Snapshot: Product → ProductVariant.Price; Box → BoxItem.Price
+        // Snapshot: Product → ProductItem.Price; Box → BoxItem.Price
         public decimal UnitPrice { get; set; }
 
         // Snapshot of selected stall; null for online-only items

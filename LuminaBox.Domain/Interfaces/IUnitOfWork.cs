@@ -15,10 +15,13 @@ namespace LuminaBox.Domain.Interfaces
         IGenericRepository<CakeCategory> CakeCategories { get; }
         IGenericRepository<Filling> Fillings { get; }
         IGenericRepository<Product> Products { get; }
-        IGenericRepository<ProductVariant> ProductVariants { get; }
-        IGenericRepository<ProductImage> ProductImages { get; }
+        IGenericRepository<ProductItem> ProductItems { get; }
+        IGenericRepository<ProductItemImage> ProductItemImages { get; }
+        IGenericRepository<StallProductItem> StallProductItems { get; }
+        IGenericRepository<StallBoxItem> StallBoxItems { get; }
+        IGenericRepository<PriceTier> PriceTiers { get; }
         IGenericRepository<BoxItem> BoxItems { get; }
-        IGenericRepository<BoxImage> BoxImages { get; }
+        IGenericRepository<BoxItemImage> BoxItemImages { get; }
         IGenericRepository<Cart> Carts { get; }
         IGenericRepository<CartItem> CartItems { get; }
         IGenericRepository<Voucher> Vouchers { get; }
@@ -38,7 +41,10 @@ namespace LuminaBox.Domain.Interfaces
         IGenericRepository<EventImage> EventImages { get; }
         IGenericRepository<Notification> Notifications { get; }
         IGenericRepository<EmailOtp> EmailOtps { get; }
-        IGenericRepository<ShippingAddress> ShippingAddresses { get; }
+        IGenericRepository<Province> Provinces { get; }
+        IGenericRepository<District> Districts { get; }
+        IGenericRepository<Ward> Wards { get; }
+        IGenericRepository<Address> Addresses { get; }
 
         Task<int> SaveChangesAsync();
 

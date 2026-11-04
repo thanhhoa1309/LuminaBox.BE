@@ -25,5 +25,8 @@ namespace LuminaBox.Application.Utils
         public static Exception Internal(string message = "Internal server error.", string? errorCode = null)
             => new ExceptionInternalServerError(message, errorCode);
 
+        public static Exception BadGateway(string message = "An external service failed.", string? errorCode = null)
+            => new ExceptionBadGateway(message, errorCode);
+
     }
 }
