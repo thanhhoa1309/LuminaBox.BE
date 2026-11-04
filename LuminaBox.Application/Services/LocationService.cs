@@ -114,19 +114,10 @@ namespace LuminaBox.Application.Services
             return new Pagination<WardResponse>(items, totalCount, pagination.PageIndex, pagination.PageSize);
         }
 
-        public async Task<ResolvedLocation> ResolveWardAsync(Guid wardId)
+        public async Task EnsureWardExistsAsync(Guid wardId)
         {
-            return await _unitOfWork.Wards.GetQueryable()
-                .AsNoTracking()
-                .Where(w => w.Id == wardId)
-                .Select(w => new ResolvedLocation
-                {
-                    WardId = w.Id,
-                    DistrictId = w.DistrictId,
-                    ProvinceId = w.District.ProvinceId
-                })
-                .FirstOrDefaultAsync()
-                ?? throw ErrorHelper.NotFound("Ward not found.", "E16.3");
+            if (!await _unitOfWork.Wards.GetQueryable().AnyAsync(w => w.Id == wardId))
+                throw ErrorHelper.NotFound("Ward not found.", "E16.3");
         }
     }
 }

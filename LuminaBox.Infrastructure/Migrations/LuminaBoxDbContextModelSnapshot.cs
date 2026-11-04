@@ -50,9 +50,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("DistrictId")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("IsDefault")
                         .HasColumnType("boolean");
 
@@ -84,9 +81,6 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<Guid>("ProvinceId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
@@ -104,10 +98,6 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("DistrictId");
-
-                    b.HasIndex("ProvinceId");
 
                     b.HasIndex("UserId");
 
@@ -1828,9 +1818,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<Guid>("DistrictId")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -1858,9 +1845,6 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<Guid>("ProvinceId")
-                        .HasColumnType("uuid");
-
                     b.Property<decimal>("RentalPrice")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -1883,10 +1867,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
-
-                    b.HasIndex("DistrictId");
-
-                    b.HasIndex("ProvinceId");
 
                     b.HasIndex("WardId");
 
@@ -2507,18 +2487,6 @@ namespace LuminaBox.Infrastructure.Migrations
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Address", b =>
                 {
-                    b.HasOne("LuminaBox.Domain.Entities.District", "District")
-                        .WithMany()
-                        .HasForeignKey("DistrictId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("LuminaBox.Domain.Entities.Province", "Province")
-                        .WithMany()
-                        .HasForeignKey("ProvinceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("LuminaBox.Domain.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2530,10 +2498,6 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasForeignKey("WardId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("District");
-
-                    b.Navigation("Province");
 
                     b.Navigation("User");
 
@@ -2999,27 +2963,11 @@ namespace LuminaBox.Infrastructure.Migrations
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Stall", b =>
                 {
-                    b.HasOne("LuminaBox.Domain.Entities.District", "District")
-                        .WithMany()
-                        .HasForeignKey("DistrictId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("LuminaBox.Domain.Entities.Province", "Province")
-                        .WithMany()
-                        .HasForeignKey("ProvinceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("LuminaBox.Domain.Entities.Ward", "Ward")
                         .WithMany()
                         .HasForeignKey("WardId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("District");
-
-                    b.Navigation("Province");
 
                     b.Navigation("Ward");
                 });

@@ -14,15 +14,13 @@ namespace LuminaBox.Application.Services
     public class StallService : IStallService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly ILocationService _locationService;
         private readonly IClaimsService _claimsService;
         private readonly IMapper _mapper;
 
-        public StallService(IUnitOfWork unitOfWork, ILocationService locationService, IClaimsService claimsService, IMapper mapper)
+        public StallService(IUnitOfWork unitOfWork, IClaimsService claimsService, IMapper mapper)
         {
             _mapper = mapper;
             _unitOfWork = unitOfWork;
-            _locationService = locationService;
             _claimsService = claimsService;
         }
 
@@ -49,10 +47,10 @@ namespace LuminaBox.Application.Services
                 query = query.Where(s => s.Status == status.Value);
 
             if (provinceId.HasValue)
-                query = query.Where(s => s.ProvinceId == provinceId.Value);
+                query = query.Where(s => s.Ward.District.ProvinceId == provinceId.Value);
 
             if (districtId.HasValue)
-                query = query.Where(s => s.DistrictId == districtId.Value);
+                query = query.Where(s => s.Ward.DistrictId == districtId.Value);
 
             if (wardId.HasValue)
                 query = query.Where(s => s.WardId == wardId.Value);
@@ -98,11 +96,9 @@ namespace LuminaBox.Application.Services
         {
             await EnsureCodeAvailableAsync(request.Code.Trim(), null);
 
-            var location = await ResolveWardAsync(request.WardId);
+            await EnsureWardExistsAsync(request.WardId);
 
             var stall = _mapper.Map<Stall>(request);
-            stall.ProvinceId = location.ProvinceId;
-            stall.DistrictId = location.DistrictId;
 
             await _unitOfWork.Stalls.AddAsync(stall);
             await _unitOfWork.SaveChangesAsync();
@@ -120,10 +116,8 @@ namespace LuminaBox.Application.Services
 
             if (request.WardId.HasValue && request.WardId.Value != stall.WardId)
             {
-                var location = await ResolveWardAsync(request.WardId.Value);
-                stall.ProvinceId = location.ProvinceId;
-                stall.DistrictId = location.DistrictId;
-                stall.WardId = location.WardId;
+                await EnsureWardExistsAsync(request.WardId.Value);
+                stall.WardId = request.WardId.Value;
             }
 
             _mapper.Map(request, stall);
@@ -157,16 +151,10 @@ namespace LuminaBox.Application.Services
                 throw ErrorHelper.Conflict("Stall code already exists.", "E4.1");
         }
 
-        private async Task<Dtos.Geography.ResolvedLocation> ResolveWardAsync(Guid wardId)
+        private async Task EnsureWardExistsAsync(Guid wardId)
         {
-            try
-            {
-                return await _locationService.ResolveWardAsync(wardId);
-            }
-            catch (Exceptions.ExceptionNotFound)
-            {
+            if (!await _unitOfWork.Wards.GetQueryable().AnyAsync(w => w.Id == wardId))
                 throw ErrorHelper.NotFound("Ward not found.", "E4.6");
-            }
         }
     }
 }

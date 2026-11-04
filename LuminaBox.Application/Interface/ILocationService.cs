@@ -11,7 +11,7 @@ namespace LuminaBox.Application.Interface
 
         Task<Pagination<WardResponse>> GetWardsAsync(Guid districtId, string? search, int page, int pageSize);
 
-        /// <summary>Derives district and province from a ward; throws NotFound when the ward does not exist.</summary>
-        Task<ResolvedLocation> ResolveWardAsync(Guid wardId);
+        /// <summary>Throws NotFound when the ward does not exist.</summary>
+        Task EnsureWardExistsAsync(Guid wardId);
     }
 }

@@ -50,7 +50,7 @@ namespace LuminaBox.Application.Services
                     throw ErrorHelper.Forbidden("Only organizers can create pickup addresses.", "E16.4");
             }
 
-            var location = await _locationService.ResolveWardAsync(request.WardId);
+            await _locationService.EnsureWardExistsAsync(request.WardId);
 
             var hasAnyOfType = await _unitOfWork.Addresses.GetQueryable()
                 .AnyAsync(a => a.UserId == userId && a.Type == request.Type);
@@ -59,9 +59,7 @@ namespace LuminaBox.Application.Services
             {
                 UserId = userId,
                 Type = request.Type,
-                ProvinceId = location.ProvinceId,
-                DistrictId = location.DistrictId,
-                WardId = location.WardId,
+                WardId = request.WardId,
                 ContactName = request.ContactName.Trim(),
                 Phone = request.Phone.Trim(),
                 AddressLine = request.AddressLine.Trim(),
@@ -94,10 +92,8 @@ namespace LuminaBox.Application.Services
 
             if (request.WardId.HasValue && request.WardId.Value != address.WardId)
             {
-                var location = await _locationService.ResolveWardAsync(request.WardId.Value);
-                address.ProvinceId = location.ProvinceId;
-                address.DistrictId = location.DistrictId;
-                address.WardId = location.WardId;
+                await _locationService.EnsureWardExistsAsync(request.WardId.Value);
+                address.WardId = request.WardId.Value;
                 address.NewProvinceName = null;
                 address.NewWardName = null;
             }
@@ -228,10 +224,10 @@ namespace LuminaBox.Application.Services
             Type = a.Type,
             ContactName = a.ContactName,
             Phone = a.Phone,
-            ProvinceId = a.ProvinceId,
-            ProvinceName = a.Province.Name,
-            DistrictId = a.DistrictId,
-            DistrictName = a.District.Name,
+            ProvinceId = a.Ward.District.ProvinceId,
+            ProvinceName = a.Ward.District.Province.Name,
+            DistrictId = a.Ward.DistrictId,
+            DistrictName = a.Ward.District.Name,
             WardId = a.WardId,
             WardName = a.Ward.Name,
             AddressLine = a.AddressLine,

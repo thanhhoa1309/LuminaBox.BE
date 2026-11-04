@@ -80,7 +80,7 @@ namespace LuminaBox.Application.Services
             var address = await _unitOfWork.Addresses.GetQueryable()
                 .AsNoTracking()
                 .Where(a => a.Id == addressId)
-                .Select(a => new { a.UserId, a.Type, a.District.GhnDistrictId, a.Ward.GhnWardCode })
+                .Select(a => new { a.UserId, a.Type, a.Ward.District.GhnDistrictId, a.Ward.GhnWardCode })
                 .FirstOrDefaultAsync()
                 ?? throw ErrorHelper.NotFound("Address not found.", "E16.3");
 
@@ -101,7 +101,7 @@ namespace LuminaBox.Application.Services
                     .AsNoTracking()
                     .Where(s => s.Id == stallId.Value
                         && s.Rentals.Any(r => r.OrganizerId == organizerId && r.Status == RentalStatus.Active))
-                    .Select(s => new { s.District.GhnDistrictId, s.Ward.GhnWardCode })
+                    .Select(s => new { s.Ward.District.GhnDistrictId, s.Ward.GhnWardCode })
                     .FirstOrDefaultAsync()
                     ?? throw ErrorHelper.NotFound("The organizer has no active rental at this stall.", "E4.4");
 
@@ -118,7 +118,7 @@ namespace LuminaBox.Application.Services
             var pickup = await _unitOfWork.Addresses.GetQueryable()
                 .AsNoTracking()
                 .Where(a => a.UserId == organizerUserId && a.Type == AddressType.Pickup && a.IsDefault)
-                .Select(a => new { a.Id, a.District.GhnDistrictId, a.Ward.GhnWardCode })
+                .Select(a => new { a.Id, a.Ward.District.GhnDistrictId, a.Ward.GhnWardCode })
                 .FirstOrDefaultAsync()
                 ?? throw ErrorHelper.Conflict("The organizer has no pickup address.", "E18.2");
 

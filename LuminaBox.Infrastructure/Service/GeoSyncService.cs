@@ -57,7 +57,7 @@ namespace LuminaBox.Infrastructure.Service
                 if (string.IsNullOrWhiteSpace(_ghn.Token))
                 {
                     report.GhnMatchingSkipped = true;
-                    _logger.LogWarning("Ghn:Token is empty. Skipping GHN id matching.");
+                    _logger.LogWarning("ShippingProviders:ghn:Token is empty. Skipping GHN id matching.");
                 }
                 else
                 {

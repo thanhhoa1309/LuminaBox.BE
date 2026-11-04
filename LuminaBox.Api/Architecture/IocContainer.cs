@@ -121,7 +121,9 @@ namespace LuminaBox.Api.Architecture
 
         private static IServiceCollection SetupGeography(this IServiceCollection services, IConfiguration configuration)
         {
-            services.Configure<GhnSettings>(configuration.GetSection("Ghn"));
+            var ghnSection = configuration.GetSection("ShippingProviders:ghn");
+
+            services.Configure<GhnSettings>(ghnSection);
 
             services.AddHttpClient(GeoSyncService.GovernmentClientName, client =>
             {
@@ -131,7 +133,7 @@ namespace LuminaBox.Api.Architecture
 
             services.AddHttpClient(GeoSyncService.GhnClientName, client =>
             {
-                var settings = configuration.GetSection("Ghn").Get<GhnSettings>() ?? new GhnSettings();
+                var settings = ghnSection.Get<GhnSettings>() ?? new GhnSettings();
                 client.BaseAddress = new Uri(settings.BaseUrl.TrimEnd('/') + "/");
                 if (!string.IsNullOrWhiteSpace(settings.Token))
                     client.DefaultRequestHeaders.Add("Token", settings.Token);

@@ -144,14 +144,6 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany()
                     .HasForeignKey(x => x.UserId);
 
-                e.HasOne(x => x.Province)
-                    .WithMany()
-                    .HasForeignKey(x => x.ProvinceId);
-
-                e.HasOne(x => x.District)
-                    .WithMany()
-                    .HasForeignKey(x => x.DistrictId);
-
                 e.HasOne(x => x.Ward)
                     .WithMany()
                     .HasForeignKey(x => x.WardId);
@@ -166,7 +158,6 @@ namespace LuminaBox.Infrastructure.Persistence
                 e.Property(x => x.NewWardName).HasMaxLength(100);
 
                 e.HasIndex(x => x.UserId);
-                e.HasIndex(x => x.DistrictId);
 
                 e.HasIndex(x => new { x.UserId, x.Type })
                     .IsUnique()
@@ -176,14 +167,6 @@ namespace LuminaBox.Infrastructure.Persistence
 
             modelBuilder.Entity<Stall>(e =>
             {
-                e.HasOne(x => x.Province)
-                    .WithMany()
-                    .HasForeignKey(x => x.ProvinceId);
-
-                e.HasOne(x => x.District)
-                    .WithMany()
-                    .HasForeignKey(x => x.DistrictId);
-
                 e.HasOne(x => x.Ward)
                     .WithMany()
                     .HasForeignKey(x => x.WardId);
@@ -196,8 +179,6 @@ namespace LuminaBox.Infrastructure.Persistence
                 e.Property(x => x.NewWardName).HasMaxLength(100);
 
                 e.HasIndex(x => x.Code).IsUnique().HasFilter(NotDeletedFilter);
-                e.HasIndex(x => x.ProvinceId);
-                e.HasIndex(x => x.DistrictId);
                 e.HasIndex(x => x.WardId);
             });
 

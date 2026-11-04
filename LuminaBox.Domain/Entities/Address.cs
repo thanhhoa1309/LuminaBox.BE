@@ -7,12 +7,6 @@ namespace LuminaBox.Domain.Entities
         public Guid UserId { get; set; }
         public User User { get; set; } = null!;
 
-        public Guid ProvinceId { get; set; }
-        public Province Province { get; set; } = null!;
-
-        public Guid DistrictId { get; set; }
-        public District District { get; set; } = null!;
-
         public Guid WardId { get; set; }
         public Ward Ward { get; set; } = null!;
 
