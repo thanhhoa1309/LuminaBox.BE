@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using LuminaBox.Application.Dtos.Payment;
 using LuminaBox.Application.Interface;
-using LuminaBox.Application.Notifications;
 using LuminaBox.Application.Utils;
 using LuminaBox.Domain.Entities;
 using LuminaBox.Domain.Enums;
@@ -11,64 +12,74 @@ namespace LuminaBox.Application.Services
 {
     public class PaymentService : IPaymentService
     {
-        private static readonly TimeSpan CheckoutWindow = TimeSpan.FromMinutes(10);
+        public const int UnpaidExpireMinutes = 10;
 
         private readonly IUnitOfWork _unitOfWork;
         private readonly IClaimsService _claimsService;
         private readonly ICurrentTime _currentTime;
-        private readonly IStripePaymentService _stripePaymentService;
-        private readonly INotificationService _notificationService;
+        private readonly IStripePaymentService _stripe;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<PaymentService> _logger;
+        private readonly IWalletService _walletService;
 
         public PaymentService(
             IUnitOfWork unitOfWork,
             IClaimsService claimsService,
             ICurrentTime currentTime,
-            IStripePaymentService stripePaymentService,
-            INotificationService notificationService)
+            IStripePaymentService stripe,
+            IConfiguration configuration,
+            ILogger<PaymentService> logger,
+            IWalletService walletService)
         {
             _unitOfWork = unitOfWork;
             _claimsService = claimsService;
             _currentTime = currentTime;
-            _stripePaymentService = stripePaymentService;
-            _notificationService = notificationService;
+            _stripe = stripe;
+            _configuration = configuration;
+            _logger = logger;
+            _walletService = walletService;
         }
 
-        public async Task<CheckoutSessionResponse> CreateCheckoutSessionAsync(CreateCheckoutSessionRequest request)
+        public async Task<CheckoutResponse> CreateCheckoutAsync(Guid orderId)
         {
             var userId = _claimsService.GetRequiredUserId();
-            var now = _currentTime.GetCurrentTime();
 
-            var payment = await _unitOfWork.Payments.GetQueryable()
-                .Include(p => p.Order)
-                .FirstOrDefaultAsync(p =>
-                    (request.PaymentId.HasValue && p.Id == request.PaymentId.Value) ||
-                    (request.OrderId.HasValue && p.OrderId == request.OrderId.Value))
-                ?? throw ErrorHelper.NotFound("Payment not found.");
+            var order = await _unitOfWork.Orders.GetByIdAsync(orderId)
+                ?? throw ErrorHelper.NotFound("Order not found.");
 
-            if (payment.UserId != userId)
-                throw ErrorHelper.Forbidden("You do not own this payment.");
+            if (order.UserId != userId)
+                throw ErrorHelper.Forbidden("You can only checkout your own orders.");
+
+            if (order.Status != OrderStatus.Pending)
+                throw ErrorHelper.Conflict("Only pending orders can be checked out.");
+
+            var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId)
+                ?? throw ErrorHelper.NotFound("Payment not found for this order.");
 
             if (payment.Method != PaymentMethod.Stripe)
-                throw ErrorHelper.BadRequest("CashOnDelivery checkout is not supported yet. Only Stripe payments are supported.");
+                throw ErrorHelper.BadRequest("Cash on delivery checkout is not supported yet.");
 
-            if (payment.Status != PaymentStatus.Pending || payment.Order.Status != OrderStatus.Pending)
-                throw ErrorHelper.Conflict("Payment or order is no longer pending.");
+            if (payment.Status == PaymentStatus.Success)
+                throw ErrorHelper.Conflict("This order has already been paid.");
 
-            var expiresAt = payment.CreatedAt.Add(CheckoutWindow);
-            if (now >= expiresAt)
-                throw ErrorHelper.Gone("Stripe checkout window (10 minutes) has expired.");
+            if (payment.Status is PaymentStatus.Cancelled or PaymentStatus.Failed or PaymentStatus.Refunded)
+                throw ErrorHelper.Conflict($"Payment is {payment.Status} and cannot be checked out.");
 
-            var successUrl = !string.IsNullOrWhiteSpace(request.SuccessUrl)
-                ? request.SuccessUrl
-                : $"http://localhost:5173/payments/{payment.Id}/checkout?status=success&session_id={{CHECKOUT_SESSION_ID}}";
+            var expireAt = payment.CreatedAt.AddMinutes(UnpaidExpireMinutes);
+            if (_currentTime.GetCurrentTime() >= expireAt)
+                throw ErrorHelper.Conflict("Payment window has expired. Please create a new order.");
 
-            var cancelUrl = !string.IsNullOrWhiteSpace(request.CancelUrl)
-                ? request.CancelUrl
-                : $"http://localhost:5173/payments/{payment.Id}/checkout?status=cancel&session_id={{CHECKOUT_SESSION_ID}}";
+            // No webhook required: Stripe redirects browser to API after pay.
+            var apiUrl = (_configuration["APP_PUBLIC_API_URL"]
+                ?? "http://localhost:5000").TrimEnd('/');
+            var successUrl =
+                $"{apiUrl}/api/payments/stripe-return?session_id={{CHECKOUT_SESSION_ID}}";
+            var cancelUrl =
+                $"{apiUrl}/api/payments/stripe-cancel?paymentId={payment.Id}";
 
-            var (url, sessionId) = await _stripePaymentService.CreateCheckoutSessionAsync(
+            var (checkoutUrl, sessionId) = await _stripe.CreateCheckoutSessionAsync(
                 payment,
-                payment.Order.OrderCode,
+                order.OrderCode,
                 successUrl,
                 cancelUrl);
 
@@ -76,320 +87,389 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.Payments.Update(payment);
             await _unitOfWork.SaveChangesAsync();
 
-            return new CheckoutSessionResponse
+            _logger.LogInformation(
+                "[CreateCheckout] User {UserId} opened Stripe checkout for order {OrderId}. Payment={PaymentId}",
+                userId, orderId, payment.Id);
+
+            return new CheckoutResponse
             {
                 PaymentId = payment.Id,
-                OrderId = payment.OrderId,
-                OrderCode = payment.Order.OrderCode,
+                OrderId = order.Id,
                 Amount = payment.Amount,
-                Currency = payment.Currency,
-                Status = payment.Status,
-                SessionId = sessionId,
-                CheckoutUrl = url,
-                ExpiresAt = expiresAt
+                CheckoutUrl = checkoutUrl
             };
         }
 
-        public async Task<PaymentResponse> GetPaymentByDetail(Guid id)
+        public async Task HandleStripeWebhookAsync(string json, string signature)
         {
-            var userId = _claimsService.GetRequiredUserId();
+            var (eventType, sessionId, transactionId) = await _stripe.ParseWebhookEventAsync(json, signature);
 
-            var item = await _unitOfWork.Payments.GetQueryable()
-                .AsNoTracking()
-                .Where(p => p.Id == id)
-                .Select(p => new
-                {
-                    p.UserId,
-                    OrganizerUserId = p.Order.Organizer.UserId,
-                    Response = new PaymentResponse
-                    {
-                        Id = p.Id,
-                        Code = p.Code,
-                        UserId = p.UserId,
-                        OrderId = p.OrderId,
-                        OrderCode = p.Order.OrderCode,
-                        Amount = p.Amount,
-                        Currency = p.Currency,
-                        Method = p.Method,
-                        Status = p.Status,
-                        CheckoutSessionId = p.CheckoutSessionId,
-                        TransactionId = p.TransactionId,
-                        CreatedAt = p.CreatedAt,
-                        PaidAt = p.PaidAt,
-                        RefundedAt = p.RefundedAt
-                    }
-                })
-                .FirstOrDefaultAsync()
-                ?? throw ErrorHelper.NotFound("Payment not found.");
-
-            var isManager = await _unitOfWork.Users.GetQueryable()
-                .AsNoTracking()
-                .AnyAsync(u => u.Id == userId && u.Role == UserRole.Manager);
-
-            if (item.UserId != userId && item.OrganizerUserId != userId && !isManager)
-                throw ErrorHelper.Forbidden("You do not have permission to view this payment.");
-
-            return item.Response;
-        }
-
-        public async Task<PaymentResponse> SyncPaymentAsync(Guid id)
-        {
-            var userId = _claimsService.GetRequiredUserId();
-            var now = _currentTime.GetCurrentTime();
-
-            var payment = await _unitOfWork.Payments.GetQueryable()
-                .Include(p => p.Order)
-                    .ThenInclude(o => o.Organizer)
-                .FirstOrDefaultAsync(p => p.Id == id)
-                ?? throw ErrorHelper.NotFound("Payment not found.");
-
-            if (payment.UserId != userId && payment.Order.Organizer.UserId != userId)
-                throw ErrorHelper.Forbidden("You do not have permission to sync this payment.");
-
-            if (payment.Method != PaymentMethod.Stripe)
-                throw ErrorHelper.BadRequest("Only Stripe payments can be synced.");
-
-            if (payment.Status == PaymentStatus.Success)
-                return await GetPaymentByDetail(payment.Id);
-
-            if (string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
-                throw ErrorHelper.BadRequest("Payment does not have a Stripe checkout session yet.");
-
-            var (paymentStatus, paymentIntentId) = await _stripePaymentService.GetCheckoutSessionAsync(payment.CheckoutSessionId);
-
-            if (string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+            switch (eventType)
             {
-                payment.Status = PaymentStatus.Success;
-                payment.TransactionId = paymentIntentId ?? payment.TransactionId;
-                payment.PaidAt = now;
-                await _unitOfWork.Payments.Update(payment);
-                await _unitOfWork.SaveChangesAsync();
-            }
+                case "checkout.session.completed":
+                {
+                    _logger.LogInformation(
+                        "[StripeWebhook] Processing checkout.session.completed for session {SessionId}",
+                        sessionId);
 
-            return await GetPaymentByDetail(payment.Id);
+                    var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(
+                        p => p.CheckoutSessionId == sessionId)
+                        ?? throw ErrorHelper.NotFound($"Payment not found for Stripe session '{sessionId}'.");
+
+                    await HandlePaymentSuccessAsync(payment, transactionId ?? sessionId);
+                    break;
+                }
+
+                case "checkout.session.expired":
+                {
+                    _logger.LogInformation("[StripeWebhook] Session expired: {SessionId}", sessionId);
+
+                    var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(
+                        p => p.CheckoutSessionId == sessionId);
+
+                    if (payment is not null)
+                        await AbandonUnpaidPaymentAsync(payment, PaymentStatus.Failed, "Stripe checkout session expired.");
+                    else
+                        _logger.LogWarning("[StripeWebhook] No payment found for expired session {SessionId}", sessionId);
+
+                    break;
+                }
+
+                default:
+                    _logger.LogInformation("[StripeWebhook] Ignoring event type: {Type}", eventType);
+                    break;
+            }
         }
 
-        public async Task<PaymentResponse> CancelPaymentAsync(Guid id)
+        public async Task CancelPaymentAsync(Guid paymentId)
         {
             var userId = _claimsService.GetRequiredUserId();
-            var now = _currentTime.GetCurrentTime();
-
-            var payment = await _unitOfWork.Payments.GetQueryable()
-                .Include(p => p.Order)
-                    .ThenInclude(o => o.Organizer)
-                .Include(p => p.Order)
-                    .ThenInclude(o => o.VoucherUsages)
-                        .ThenInclude(vu => vu.Voucher)
-                .FirstOrDefaultAsync(p => p.Id == id)
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId)
                 ?? throw ErrorHelper.NotFound("Payment not found.");
 
             if (payment.UserId != userId)
-                throw ErrorHelper.Forbidden("You do not own this payment.");
+                throw ErrorHelper.Forbidden("You can only cancel your own payments.");
 
             if (payment.Status != PaymentStatus.Pending)
-                throw ErrorHelper.Conflict("Only pending payments can be cancelled.");
-
-            await CancelPendingPaymentAndOrderAsync(payment, userId, "Payment cancelled by buyer", now);
-
-            return await GetPaymentByDetail(payment.Id);
-        }
-
-        public async Task<PaymentResponse> HandleStripeReturnAsync(string? sessionId, Guid? paymentId)
-        {
-            var now = _currentTime.GetCurrentTime();
-
-            var payment = await FindPaymentBySessionOrIdAsync(sessionId, paymentId)
-                ?? throw ErrorHelper.NotFound("Payment not found.");
-
-            if (payment.Status == PaymentStatus.Pending && !string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
             {
-                var (paymentStatus, paymentIntentId) = await _stripePaymentService.GetCheckoutSessionAsync(payment.CheckoutSessionId);
-                if (string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
-                {
-                    payment.Status = PaymentStatus.Success;
-                    payment.TransactionId = paymentIntentId ?? payment.TransactionId;
-                    payment.PaidAt = now;
-                    await _unitOfWork.Payments.Update(payment);
-                    await _unitOfWork.SaveChangesAsync();
-                }
+                _logger.LogInformation(
+                    "[CancelPayment] Payment {Id} is already {Status}. Skipping.",
+                    payment.Id, payment.Status);
+                return;
             }
 
-            return await ProjectPaymentByIdAsync(payment.Id);
+            await AbandonUnpaidPaymentAsync(payment, PaymentStatus.Cancelled, "Buyer cancelled Stripe checkout.");
         }
 
-        public async Task<PaymentResponse> HandleStripeCancelAsync(string? sessionId, Guid? paymentId)
+        public async Task CancelPaymentFromReturnAsync(Guid paymentId)
         {
-            var now = _currentTime.GetCurrentTime();
-
-            var payment = await FindPaymentBySessionOrIdAsync(sessionId, paymentId)
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId)
                 ?? throw ErrorHelper.NotFound("Payment not found.");
 
-            if (payment.Status == PaymentStatus.Pending)
+            if (payment.Status != PaymentStatus.Pending)
             {
-                await CancelPendingPaymentAndOrderAsync(payment, payment.UserId, "Stripe checkout cancelled by buyer", now);
+                _logger.LogInformation(
+                    "[CancelPaymentFromReturn] Payment {Id} is already {Status}. Skipping.",
+                    payment.Id, payment.Status);
+                return;
             }
 
-            return await ProjectPaymentByIdAsync(payment.Id);
+            await AbandonUnpaidPaymentAsync(payment, PaymentStatus.Cancelled, "Buyer cancelled Stripe checkout.");
         }
 
-        public async Task HandleStripeWebhookAsync(string payload, string stripeSignature)
+        public async Task<PaymentResponse> GetPaymentByIdAsync(Guid id)
         {
-            var now = _currentTime.GetCurrentTime();
-            var (eventType, sessionId, transactionId) = await _stripePaymentService.ParseWebhookEventAsync(payload, stripeSignature);
+            var userId = _claimsService.GetRequiredUserId();
+            var payment = await _unitOfWork.Payments.GetByIdAsync(id)
+                ?? throw ErrorHelper.NotFound("Payment not found.");
 
+            if (payment.UserId != userId)
+            {
+                var order = await _unitOfWork.Orders.GetByIdAsync(payment.OrderId)
+                    ?? throw ErrorHelper.NotFound("Order not found.");
+
+                var organizer = await _unitOfWork.Organizers.FirstOrDefaultAsync(o => o.UserId == userId);
+                if (organizer is null || order.OrganizerId != organizer.Id)
+                    throw ErrorHelper.Forbidden("You do not have permission to view this payment.");
+            }
+
+            return ToPaymentResponse(payment);
+        }
+
+        public async Task<PaymentResponse> SyncCheckoutSessionAsync(Guid paymentId)
+        {
+            var userId = _claimsService.GetRequiredUserId();
+            var payment = await _unitOfWork.Payments.GetByIdAsync(paymentId)
+                ?? throw ErrorHelper.NotFound("Payment not found.");
+
+            if (payment.UserId != userId)
+                throw ErrorHelper.Forbidden("You can only sync your own payments.");
+
+            if (payment.Status == PaymentStatus.Success)
+                return ToPaymentResponse(payment);
+
+            if (payment.Method != PaymentMethod.Stripe)
+                throw ErrorHelper.BadRequest("Only Stripe payments can be synced from checkout.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw ErrorHelper.Conflict($"Payment is {payment.Status} and cannot be synced.");
+
+            if (string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
+                throw ErrorHelper.Conflict("Checkout session has not been created yet.");
+
+            var (paymentStatus, paymentIntentId) = await _stripe.GetCheckoutSessionAsync(payment.CheckoutSessionId);
+
+            _logger.LogInformation(
+                "[SyncCheckout] Payment {PaymentId} Stripe status={Status}",
+                payment.Id, paymentStatus);
+
+            if (!string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+                throw ErrorHelper.Conflict($"Stripe checkout is not paid yet (status: {paymentStatus}).");
+
+            await HandlePaymentSuccessAsync(payment, paymentIntentId ?? payment.CheckoutSessionId);
+
+            var updated = await _unitOfWork.Payments.GetByIdAsync(paymentId)
+                ?? throw ErrorHelper.NotFound("Payment not found.");
+            return ToPaymentResponse(updated);
+        }
+
+        public async Task<PaymentResponse> CompleteCheckoutBySessionAsync(string sessionId)
+        {
             if (string.IsNullOrWhiteSpace(sessionId))
-                return;
+                throw ErrorHelper.BadRequest("Stripe session id is required.");
 
-            var payment = await FindPaymentBySessionOrIdAsync(sessionId, null);
-            if (payment is null)
-                return;
+            var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(
+                p => p.CheckoutSessionId == sessionId)
+                ?? throw ErrorHelper.NotFound($"Payment not found for Stripe session '{sessionId}'.");
 
-            if (string.Equals(eventType, "checkout.session.completed", StringComparison.OrdinalIgnoreCase) &&
-                payment.Status == PaymentStatus.Pending)
+            if (payment.Status == PaymentStatus.Success)
+                return ToPaymentResponse(payment);
+
+            if (payment.Method != PaymentMethod.Stripe)
+                throw ErrorHelper.BadRequest("Only Stripe payments can be completed from checkout.");
+
+            if (payment.Status != PaymentStatus.Pending)
+                throw ErrorHelper.Conflict($"Payment is {payment.Status} and cannot be completed.");
+
+            var (paymentStatus, paymentIntentId) = await _stripe.GetCheckoutSessionAsync(sessionId);
+
+            _logger.LogInformation(
+                "[CompleteCheckout] Payment {PaymentId} Stripe status={Status}",
+                payment.Id, paymentStatus);
+
+            if (!string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+                throw ErrorHelper.Conflict($"Stripe checkout is not paid yet (status: {paymentStatus}).");
+
+            await HandlePaymentSuccessAsync(payment, paymentIntentId ?? sessionId);
+
+            var updated = await _unitOfWork.Payments.GetByIdAsync(payment.Id)
+                ?? throw ErrorHelper.NotFound("Payment not found.");
+            return ToPaymentResponse(updated);
+        }
+
+        public async Task<int> ExpireUnpaidPaymentsAsync()
+        {
+            var now = _currentTime.GetCurrentTime();
+            var cutoff = now.AddMinutes(-UnpaidExpireMinutes);
+
+            var expiredPayments = await _unitOfWork.Payments.GetQueryable()
+                .Where(p =>
+                    p.Method == PaymentMethod.Stripe &&
+                    p.Status == PaymentStatus.Pending &&
+                    p.CreatedAt < cutoff)
+                .ToListAsync();
+
+            var count = 0;
+            foreach (var payment in expiredPayments)
             {
-                payment.Status = PaymentStatus.Success;
-                payment.TransactionId = transactionId ?? payment.TransactionId;
-                payment.PaidAt = now;
+                await AbandonUnpaidPaymentAsync(
+                    payment,
+                    PaymentStatus.Cancelled,
+                    "Payment was not completed within 10 minutes.");
+                count++;
+            }
+
+            return count;
+        }
+
+        public async Task RefundOrderPaymentAsync(Guid orderId)
+        {
+            var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId)
+                ?? throw ErrorHelper.NotFound("Payment not found for this order.");
+
+            if (payment.Status == PaymentStatus.Refunded)
+                return;
+
+            if (payment.Status != PaymentStatus.Success)
+                throw ErrorHelper.Conflict("Only successful payments can be refunded.");
+
+            if (payment.Method == PaymentMethod.Stripe)
+                await _walletService.ReverseOrderEarningAsync(orderId);
+
+            if (payment.Method == PaymentMethod.Stripe &&
+                !string.IsNullOrWhiteSpace(payment.TransactionId))
+            {
+                await _stripe.RefundPaymentAsync(payment.TransactionId);
+            }
+
+            payment.Status = PaymentStatus.Refunded;
+            payment.RefundedAt = _currentTime.GetCurrentTime();
+            await _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
+        private async Task HandlePaymentSuccessAsync(Payment payment, string transactionId)
+        {
+            if (payment.Status == PaymentStatus.Success)
+            {
+                _logger.LogInformation(
+                    "[HandlePaymentSuccess] Payment {PaymentId} already Success. Skipping.",
+                    payment.Id);
+                return;
+            }
+
+            if (payment.Status != PaymentStatus.Pending)
+            {
+                _logger.LogWarning(
+                    "[HandlePaymentSuccess] Payment {PaymentId} is {Status}; refunding unexpected Stripe payment.",
+                    payment.Id, payment.Status);
+
+                if (!string.IsNullOrWhiteSpace(transactionId))
+                    await _stripe.RefundPaymentAsync(transactionId);
+
+                return;
+            }
+
+            var order = await _unitOfWork.Orders.GetByIdAsync(payment.OrderId);
+            if (order is null || order.Status == OrderStatus.Cancelled)
+            {
+                _logger.LogWarning(
+                    "[HandlePaymentSuccess] Order for payment {PaymentId} is missing or cancelled; refunding.",
+                    payment.Id);
+
+                if (!string.IsNullOrWhiteSpace(transactionId))
+                    await _stripe.RefundPaymentAsync(transactionId);
+
+                payment.Status = PaymentStatus.Refunded;
+                payment.TransactionId = transactionId;
+                payment.RefundedAt = _currentTime.GetCurrentTime();
                 await _unitOfWork.Payments.Update(payment);
                 await _unitOfWork.SaveChangesAsync();
+                return;
             }
-            else if (string.Equals(eventType, "checkout.session.expired", StringComparison.OrdinalIgnoreCase) &&
-                     payment.Status == PaymentStatus.Pending)
-            {
-                await CancelPendingPaymentAndOrderAsync(
-                    payment,
-                    null,
-                    "Stripe checkout session expired",
-                    now,
-                    markFailed: true);
-            }
+
+            payment.Status = PaymentStatus.Success;
+            payment.TransactionId = transactionId;
+            payment.PaidAt = _currentTime.GetCurrentTime();
+            await _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "[HandlePaymentSuccess] Payment {PaymentId} confirmed for order {OrderId}.",
+                payment.Id, payment.OrderId);
         }
 
-        private async Task<Payment?> FindPaymentBySessionOrIdAsync(string? sessionId, Guid? paymentId)
-        {
-            var query = _unitOfWork.Payments.GetQueryable()
-                .Include(p => p.Order)
-                    .ThenInclude(o => o.Organizer)
-                .Include(p => p.Order)
-                    .ThenInclude(o => o.VoucherUsages)
-                        .ThenInclude(vu => vu.Voucher);
-
-            if (paymentId.HasValue && paymentId.Value != Guid.Empty)
-            {
-                return await query.FirstOrDefaultAsync(p => p.Id == paymentId.Value);
-            }
-
-            if (!string.IsNullOrWhiteSpace(sessionId))
-            {
-                return await query.FirstOrDefaultAsync(p => p.CheckoutSessionId == sessionId);
-            }
-
-            return null;
-        }
-
-        private async Task CancelPendingPaymentAndOrderAsync(
+        private async Task AbandonUnpaidPaymentAsync(
             Payment payment,
-            Guid? actorUserId,
-            string reason,
-            DateTime now,
-            bool markFailed = false)
+            PaymentStatus paymentStatus,
+            string orderCancelReason)
         {
-            var orderCancelled = false;
+            if (payment.Status != PaymentStatus.Pending)
+                return;
 
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                payment.Status = markFailed ? PaymentStatus.Failed : PaymentStatus.Cancelled;
-                await _unitOfWork.Payments.Update(payment);
+                // Re-load inside transaction
+                var current = await _unitOfWork.Payments.GetByIdAsync(payment.Id);
+                if (current is null || current.Status != PaymentStatus.Pending)
+                    return true;
 
-                var order = payment.Order;
-                if (order.Status == OrderStatus.Pending)
+                current.Status = paymentStatus;
+                await _unitOfWork.Payments.Update(current);
+
+                var order = await _unitOfWork.Orders.GetByIdAsync(current.OrderId);
+
+                if (order is not null && order.Status == OrderStatus.Pending)
                 {
-                    var previousStatus = order.Status;
+                    var now = _currentTime.GetCurrentTime();
+                    var fromStatus = order.Status;
                     order.Status = OrderStatus.Cancelled;
                     order.CancelledAt = now;
-                    order.CancelReason = reason;
+                    order.CancelReason = orderCancelReason;
+
+                    await RestoreVouchersForOrderAsync(order.Id, now);
                     await _unitOfWork.Orders.Update(order);
-
-                    foreach (var usage in order.VoucherUsages.ToList())
-                    {
-                        var voucher = usage.Voucher;
-                        if (voucher.UsedCount > 0)
-                        {
-                            voucher.UsedCount -= 1;
-                            await _unitOfWork.Vouchers.Update(voucher);
-                        }
-
-                        var alreadyClaimed = await _unitOfWork.UserVouchers.GetQueryable()
-                            .AnyAsync(uv => uv.UserId == order.UserId && uv.VoucherId == usage.VoucherId);
-
-                        if (!alreadyClaimed)
-                        {
-                            await _unitOfWork.UserVouchers.AddAsync(new UserVoucher
-                            {
-                                UserId = order.UserId,
-                                VoucherId = usage.VoucherId,
-                                ClaimedAt = now
-                            });
-                        }
-
-                        await _unitOfWork.VoucherUsages.SoftRemove(usage);
-                    }
-
                     await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                     {
                         OrderId = order.Id,
-                        FromStatus = previousStatus,
+                        FromStatus = fromStatus,
                         ToStatus = OrderStatus.Cancelled,
-                        ChangedBy = actorUserId,
+                        ChangedBy = null,
                         ChangedAt = now
                     });
-
-                    orderCancelled = true;
                 }
 
                 await _unitOfWork.SaveChangesAsync();
                 return true;
             });
 
-            if (orderCancelled)
+            _logger.LogInformation(
+                "[AbandonUnpaidPayment] Payment {PaymentId} marked {Status}.",
+                payment.Id, paymentStatus);
+        }
+
+        private async Task RestoreVouchersForOrderAsync(Guid orderId, DateTime now)
+        {
+            var usages = await _unitOfWork.VoucherUsages.GetQueryable()
+                .Where(u => u.OrderId == orderId)
+                .ToListAsync();
+
+            if (usages.Count == 0)
+                return;
+
+            foreach (var usage in usages)
             {
-                await _notificationService.SendAsync(
-                    NotificationCatalog.OrderCancelled(
-                        payment.Order.UserId,
-                        payment.Order.Organizer.UserId,
-                        payment.Order.Id,
-                        payment.Order.OrderCode,
-                        payment.Order.Organizer.BrandName,
-                        cancelledByOrganizer: false,
-                        reason: reason));
+                var voucher = await _unitOfWork.Vouchers.GetByIdAsync(usage.VoucherId);
+                if (voucher is not null)
+                {
+                    if (voucher.UsedCount > 0)
+                        voucher.UsedCount -= 1;
+                    await _unitOfWork.Vouchers.Update(voucher);
+                }
+
+                await _unitOfWork.VoucherUsages.SoftRemove(usage);
+
+                var alreadyInWallet = await _unitOfWork.UserVouchers.GetQueryable()
+                    .AnyAsync(uv => uv.UserId == usage.UserId && uv.VoucherId == usage.VoucherId);
+
+                if (!alreadyInWallet)
+                {
+                    await _unitOfWork.UserVouchers.AddAsync(new UserVoucher
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = usage.UserId,
+                        VoucherId = usage.VoucherId,
+                        ClaimedAt = now
+                    });
+                }
             }
         }
 
-        private async Task<PaymentResponse> ProjectPaymentByIdAsync(Guid id)
+        private static PaymentResponse ToPaymentResponse(Payment p) => new()
         {
-            return await _unitOfWork.Payments.GetQueryable()
-                .AsNoTracking()
-                .Where(p => p.Id == id)
-                .Select(p => new PaymentResponse
-                {
-                    Id = p.Id,
-                    Code = p.Code,
-                    UserId = p.UserId,
-                    OrderId = p.OrderId,
-                    OrderCode = p.Order.OrderCode,
-                    Amount = p.Amount,
-                    Currency = p.Currency,
-                    Method = p.Method,
-                    Status = p.Status,
-                    CheckoutSessionId = p.CheckoutSessionId,
-                    TransactionId = p.TransactionId,
-                    CreatedAt = p.CreatedAt,
-                    PaidAt = p.PaidAt,
-                    RefundedAt = p.RefundedAt
-                })
-                .FirstOrDefaultAsync()
-                ?? throw ErrorHelper.NotFound("Payment not found.");
-        }
+            Id = p.Id,
+            Code = p.Code,
+            UserId = p.UserId,
+            OrderId = p.OrderId,
+            Amount = p.Amount,
+            Currency = p.Currency,
+            Method = p.Method,
+            Status = p.Status,
+            CheckoutSessionId = p.CheckoutSessionId,
+            TransactionId = p.TransactionId,
+            PaidAt = p.PaidAt,
+            RefundedAt = p.RefundedAt,
+            CreatedAt = p.CreatedAt
+        };
     }
 }
-

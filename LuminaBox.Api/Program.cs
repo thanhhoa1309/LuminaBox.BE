@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using LuminaBox.Api.Architecture;
 using LuminaBox.Api.Middlewares;
+using LuminaBox.Application.Interface;
 using LuminaBox.Infrastructure.Realtime;
 using Swashbuckle.AspNetCore.SwaggerUI;
 using SwaggerThemes;
@@ -36,6 +37,14 @@ catch (Exception e)
 {
     app.Logger.LogCritical(e, "CRITICAL: Failed to apply database migrations. Application cannot start.");
     throw;
+}
+
+if (args.Contains("sync-geo"))
+{
+    using var scope = app.Services.CreateScope();
+    var report = await scope.ServiceProvider.GetRequiredService<IGeoSyncService>().SyncAsync();
+    app.Logger.LogInformation("Geography sync finished: {Report}", System.Text.Json.JsonSerializer.Serialize(report));
+    return;
 }
 
 if (app.Environment.IsDevelopment())

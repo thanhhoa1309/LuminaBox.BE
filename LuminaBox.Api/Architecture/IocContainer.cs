@@ -10,7 +10,7 @@ using Microsoft.OpenApi.Models;
 using LuminaBox.Application.Commons;
 using LuminaBox.Application.Exceptions;
 using LuminaBox.Application.Interface;
-using LuminaBox.Application.Jobs.Payment;
+using LuminaBox.Application.Mappings;
 using LuminaBox.Application.Services;
 using LuminaBox.Application.Utils;
 using LuminaBox.Domain.Enums;
@@ -39,18 +39,20 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IClaimsService, ClaimsService>();
             services.AddScoped<IEmailService, LogEmailService>();
 
+            services.AddHostedService<UnpaidPaymentExpireWorker>();
+
             services.SetupStripe(configuration);
-            services.SetupGhn(configuration);
+            services.SetupGeography(configuration);
             services.SetupRealtime();
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
             services.AddHttpClient<IGhnShippingService, GhnShippingService>();
 
-            // Business services — đăng ký khi mang Application Services sang
             services.SetupBusinessServicesLayer();
             services.AddHostedService<UnpaidPaymentExpireWorker>();
 
+            services.AddAutoMapper(cfg => cfg.LicenseKey = configuration["AutoMapper:LicenseKey"], typeof(StallMappingProfile).Assembly);
             services.SetupValidation();
             services.SetupJwt(configuration);
 
@@ -87,24 +89,20 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<INotificationService, NotificationService>();
-            services.AddScoped<ICartService, CartService>();
-            services.AddScoped<IOrderService, OrderService>();
+            services.AddScoped<ILocationService, LocationService>();
+            services.AddScoped<IAddressService, AddressService>();
+            services.AddScoped<IGeoSyncService, GeoSyncService>();
+            services.AddScoped<ICakeCategoryService, CakeCategoryService>();
+            services.AddScoped<IFillingService, FillingService>();
+            services.AddScoped<IOrganizerAccessService, OrganizerAccessService>();
+            services.AddScoped<IProductService, ProductService>();
+            services.AddScoped<IProductItemService, ProductItemService>();
+            services.AddScoped<IStallService, StallService>();
+            services.AddScoped<IBoxItemService, BoxItemService>();
+            services.AddScoped<IShippingFeeService, ShippingFeeService>();
+            services.AddScoped<IGhnClient, GhnClient>();
             services.AddScoped<IPaymentService, PaymentService>();
-            services.AddScoped<UnpaidPaymentExpireJob>();
-
-            return services;
-        }
-
-        private static IServiceCollection SetupGhn(this IServiceCollection services, IConfiguration configuration)
-        {
-            services.Configure<GhnSettings>(opts =>
-            {
-                configuration.GetSection("Ghn").Bind(opts);
-                if (string.IsNullOrWhiteSpace(opts.Token))
-                {
-                    opts.Token = configuration["GHN_TOKEN"] ?? string.Empty;
-                }
-            });
+            services.AddScoped<IWalletService, WalletService>();
 
             return services;
         }
@@ -122,6 +120,30 @@ namespace LuminaBox.Api.Architecture
                 opts.WebhookSecret = configuration["Stripe:WebhookSecret"]
                     ?? configuration["STRIPE_WEBHOOK_SECRET"]
                     ?? string.Empty;
+            });
+
+            return services;
+        }
+
+        private static IServiceCollection SetupGeography(this IServiceCollection services, IConfiguration configuration)
+        {
+            var ghnSection = configuration.GetSection("ShippingProviders:ghn");
+
+            services.Configure<GhnSettings>(ghnSection);
+
+            services.AddHttpClient(GeoSyncService.GovernmentClientName, client =>
+            {
+                client.BaseAddress = new Uri(configuration["Geography:GovernmentBaseUrl"] ?? "https://provinces.open-api.vn/");
+                client.Timeout = TimeSpan.FromMinutes(2);
+            });
+
+            services.AddHttpClient(GeoSyncService.GhnClientName, client =>
+            {
+                var settings = ghnSection.Get<GhnSettings>() ?? new GhnSettings();
+                client.BaseAddress = new Uri(settings.BaseUrl.TrimEnd('/') + "/");
+                if (!string.IsNullOrWhiteSpace(settings.Token))
+                    client.DefaultRequestHeaders.Add("Token", settings.Token);
+                client.Timeout = TimeSpan.FromMinutes(2);
             });
 
             return services;

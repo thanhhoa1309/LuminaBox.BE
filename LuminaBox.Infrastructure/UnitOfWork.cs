@@ -51,10 +51,13 @@ namespace LuminaBox.Infrastructure
         public IGenericRepository<CakeCategory> CakeCategories => Repository<CakeCategory>();
         public IGenericRepository<Filling> Fillings => Repository<Filling>();
         public IGenericRepository<Product> Products => Repository<Product>();
-        public IGenericRepository<ProductVariant> ProductVariants => Repository<ProductVariant>();
-        public IGenericRepository<ProductImage> ProductImages => Repository<ProductImage>();
+        public IGenericRepository<ProductItem> ProductItems => Repository<ProductItem>();
+        public IGenericRepository<ProductItemImage> ProductItemImages => Repository<ProductItemImage>();
+        public IGenericRepository<StallProductItem> StallProductItems => Repository<StallProductItem>();
+        public IGenericRepository<StallBoxItem> StallBoxItems => Repository<StallBoxItem>();
+        public IGenericRepository<PriceTier> PriceTiers => Repository<PriceTier>();
         public IGenericRepository<BoxItem> BoxItems => Repository<BoxItem>();
-        public IGenericRepository<BoxImage> BoxImages => Repository<BoxImage>();
+        public IGenericRepository<BoxItemImage> BoxItemImages => Repository<BoxItemImage>();
         public IGenericRepository<Cart> Carts => Repository<Cart>();
         public IGenericRepository<CartItem> CartItems => Repository<CartItem>();
         public IGenericRepository<Voucher> Vouchers => Repository<Voucher>();
@@ -74,7 +77,10 @@ namespace LuminaBox.Infrastructure
         public IGenericRepository<EventImage> EventImages => Repository<EventImage>();
         public IGenericRepository<Notification> Notifications => Repository<Notification>();
         public IGenericRepository<EmailOtp> EmailOtps => Repository<EmailOtp>();
-        public IGenericRepository<ShippingAddress> ShippingAddresses => Repository<ShippingAddress>();
+        public IGenericRepository<Province> Provinces => Repository<Province>();
+        public IGenericRepository<District> Districts => Repository<District>();
+        public IGenericRepository<Ward> Wards => Repository<Ward>();
+        public IGenericRepository<Address> Addresses => Repository<Address>();
 
         public async Task<int> SaveChangesAsync()
         {
