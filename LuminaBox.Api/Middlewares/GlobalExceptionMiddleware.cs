@@ -29,9 +29,9 @@ namespace LuminaBox.Api.Middlewares
 
                 await WriteErrorAsync(context, ex.StatusCode, ex.ErrorCode ?? ex.StatusCode.ToString(), ex.Message);
             }
-            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ExclusionViolation })
             {
-                _logger.LogWarning(ex, "Unique constraint violation");
+                _logger.LogWarning(ex, "Unique or exclusion constraint violation");
                 await WriteErrorAsync(context, StatusCodes.Status409Conflict, "409", "The request conflicts with existing data.");
             }
             catch (Exception ex)
