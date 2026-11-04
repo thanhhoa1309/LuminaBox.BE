@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json.Serialization;
 using FluentValidation;
 using FluentValidation.AspNetCore;
@@ -10,11 +10,13 @@ using Microsoft.OpenApi.Models;
 using LuminaBox.Application.Commons;
 using LuminaBox.Application.Exceptions;
 using LuminaBox.Application.Interface;
+using LuminaBox.Application.Jobs.Payment;
 using LuminaBox.Application.Services;
 using LuminaBox.Application.Utils;
 using LuminaBox.Domain.Enums;
 using LuminaBox.Domain.Interfaces;
 using LuminaBox.Infrastructure;
+using LuminaBox.Infrastructure.BackgroundJobs;
 using LuminaBox.Infrastructure.Commons;
 using LuminaBox.Infrastructure.Persistence;
 using LuminaBox.Infrastructure.Realtime;
@@ -38,13 +40,16 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IEmailService, LogEmailService>();
 
             services.SetupStripe(configuration);
+            services.SetupGhn(configuration);
             services.SetupRealtime();
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
+            services.AddHttpClient<IGhnShippingService, GhnShippingService>();
 
             // Business services — đăng ký khi mang Application Services sang
             services.SetupBusinessServicesLayer();
+            services.AddHostedService<UnpaidPaymentExpireWorker>();
 
             services.SetupValidation();
             services.SetupJwt(configuration);
@@ -82,6 +87,24 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<INotificationService, NotificationService>();
+            services.AddScoped<ICartService, CartService>();
+            services.AddScoped<IOrderService, OrderService>();
+            services.AddScoped<IPaymentService, PaymentService>();
+            services.AddScoped<UnpaidPaymentExpireJob>();
+
+            return services;
+        }
+
+        private static IServiceCollection SetupGhn(this IServiceCollection services, IConfiguration configuration)
+        {
+            services.Configure<GhnSettings>(opts =>
+            {
+                configuration.GetSection("Ghn").Bind(opts);
+                if (string.IsNullOrWhiteSpace(opts.Token))
+                {
+                    opts.Token = configuration["GHN_TOKEN"] ?? string.Empty;
+                }
+            });
 
             return services;
         }

@@ -1,6 +1,14 @@
 @LuminaBox.Api_HostAddress = http://localhost:5155
 @accessToken = 
 @refreshToken = 
+@productId = 00000000-0000-0000-0000-000000000000
+@categoryId = 00000000-0000-0000-0000-000000000000
+@fillingId = 00000000-0000-0000-0000-000000000000
+@boxItemId = 00000000-0000-0000-0000-000000000000
+@cartItemId = 00000000-0000-0000-0000-000000000000
+@shippingAddressId = 00000000-0000-0000-0000-000000000000
+@orderId = 00000000-0000-0000-0000-000000000000
+@paymentId = 00000000-0000-0000-0000-000000000000
 
 ### Register
 POST {{LuminaBox.Api_HostAddress}}/api/auth/register
@@ -63,3 +71,154 @@ Content-Type: application/json
   "confirmPassword": "mismatch",
   "phone": "123"
 }
+
+### ============================================================================
+### CART ENDPOINTS
+### ============================================================================
+
+### Get my cart
+GET {{LuminaBox.Api_HostAddress}}/api/carts/me
+Authorization: Bearer {{accessToken}}
+
+### Add product to cart
+POST {{LuminaBox.Api_HostAddress}}/api/carts/items/product
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "productId": "{{productId}}",
+  "categoryId": "{{categoryId}}",
+  "fillingId": "{{fillingId}}",
+  "quantity": 2
+}
+
+### Add box to cart
+POST {{LuminaBox.Api_HostAddress}}/api/carts/items/box
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "boxItemId": "{{boxItemId}}",
+  "quantity": 1
+}
+
+### Update cart item (partial update)
+PUT {{LuminaBox.Api_HostAddress}}/api/carts/items/{{cartItemId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "quantity": 3
+}
+
+### Remove cart item
+DELETE {{LuminaBox.Api_HostAddress}}/api/carts/items/{{cartItemId}}
+Authorization: Bearer {{accessToken}}
+
+### ============================================================================
+### ORDER ENDPOINTS
+### ============================================================================
+
+### Create order directly
+POST {{LuminaBox.Api_HostAddress}}/api/orders
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "shippingAddressId": "{{shippingAddressId}}",
+  "paymentMethod": "Stripe",
+  "note": "Giao giờ hành chính",
+  "items": [
+    {
+      "itemType": "Product",
+      "productId": "{{productId}}",
+      "categoryId": "{{categoryId}}",
+      "fillingId": "{{fillingId}}",
+      "quantity": 2
+    }
+  ]
+}
+
+### Create order from cart
+POST {{LuminaBox.Api_HostAddress}}/api/orders/from-cart
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "shippingAddressId": "{{shippingAddressId}}",
+  "paymentMethod": "CashOnDelivery",
+  "cartItemIds": [
+    "{{cartItemId}}"
+  ]
+}
+
+### Get my orders
+GET {{LuminaBox.Api_HostAddress}}/api/orders/me?page=1&pageSize=10
+Authorization: Bearer {{accessToken}}
+
+### Get organizer orders
+GET {{LuminaBox.Api_HostAddress}}/api/orders/organizer/me?page=1&pageSize=10
+Authorization: Bearer {{accessToken}}
+
+### Get order detail
+GET {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}
+Authorization: Bearer {{accessToken}}
+
+### Confirm order (Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/confirm
+Authorization: Bearer {{accessToken}}
+
+### Ship order (Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/ship
+Authorization: Bearer {{accessToken}}
+
+### Sync shipping (Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/sync-shipping
+Authorization: Bearer {{accessToken}}
+
+### Mark order delivered (Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/mark-delivered
+Authorization: Bearer {{accessToken}}
+
+### Reject order (Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/reject
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "Hết nguyên liệu làm bánh"
+}
+
+### Cancel order (Buyer or Organizer)
+POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/cancel
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reason": "Đổi ý muốn chọn nhân khác"
+}
+
+### ============================================================================
+### PAYMENT ENDPOINTS
+### ============================================================================
+
+### Create Stripe Checkout Session
+POST {{LuminaBox.Api_HostAddress}}/api/payments/checkout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "paymentId": "{{paymentId}}"
+}
+
+### Get payment details
+GET {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}
+Authorization: Bearer {{accessToken}}
+
+### Sync Stripe payment status
+POST {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}/sync
+Authorization: Bearer {{accessToken}}
+
+### Cancel pending payment
+PATCH {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}/cancel
+Authorization: Bearer {{accessToken}}
