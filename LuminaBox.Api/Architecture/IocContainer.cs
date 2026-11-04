@@ -16,6 +16,7 @@ using LuminaBox.Application.Utils;
 using LuminaBox.Domain.Enums;
 using LuminaBox.Domain.Interfaces;
 using LuminaBox.Infrastructure;
+using LuminaBox.Infrastructure.BackgroundJobs;
 using LuminaBox.Infrastructure.Commons;
 using LuminaBox.Infrastructure.Persistence;
 using LuminaBox.Infrastructure.Realtime;
@@ -38,6 +39,8 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IClaimsService, ClaimsService>();
             services.AddScoped<IEmailService, LogEmailService>();
 
+            services.AddHostedService<UnpaidPaymentExpireWorker>();
+
             services.SetupStripe(configuration);
             services.SetupGeography(configuration);
             services.SetupRealtime();
@@ -45,7 +48,6 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
 
-            // Business services — đăng ký khi mang Application Services sang
             services.SetupBusinessServicesLayer();
 
             services.AddAutoMapper(cfg => cfg.LicenseKey = configuration["AutoMapper:LicenseKey"], typeof(StallMappingProfile).Assembly);
@@ -97,6 +99,8 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IBoxItemService, BoxItemService>();
             services.AddScoped<IShippingFeeService, ShippingFeeService>();
             services.AddScoped<IGhnClient, GhnClient>();
+            services.AddScoped<IPaymentService, PaymentService>();
+            services.AddScoped<IWalletService, WalletService>();
 
             return services;
         }
