@@ -22,44 +22,21 @@ namespace LuminaBox.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("BoxItemProducts", b =>
-                {
-                    b.Property<Guid>("BoxItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("BoxItemId", "ProductId");
-
-                    b.HasIndex("ProductId");
-
-                    b.ToTable("BoxItemProducts", (string)null);
-                });
-
-            modelBuilder.Entity("BoxItemStalls", b =>
-                {
-                    b.Property<Guid>("BoxItemId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("StallId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("BoxItemId", "StallId");
-
-                    b.HasIndex("StallId");
-
-                    b.ToTable("BoxItemStalls", (string)null);
-                });
-
-            modelBuilder.Entity("LuminaBox.Domain.Entities.BoxImage", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Address", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("BoxItemId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("AddressLine")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ContactName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -73,18 +50,46 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("ImageUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<Guid>("DistrictId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean");
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("MapRefId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("NewProvinceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NewWardName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -92,13 +97,28 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WardId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("BoxItemId");
+                    b.HasIndex("DistrictId");
 
-                    b.HasIndex("BoxItemId", "IsPrimary");
+                    b.HasIndex("ProvinceId");
 
-                    b.ToTable("BoxImages");
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WardId");
+
+                    b.HasIndex("UserId", "Type")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Addresses_User_Type_Default")
+                        .HasFilter("\"IsDefault\" = true AND \"IsDeleted\" = false");
+
+                    b.ToTable("Addresses");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.BoxItem", b =>
@@ -125,12 +145,21 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<decimal>("HeightCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<decimal>("LengthCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");
@@ -149,6 +178,13 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Weight")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("WidthCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizerId");
@@ -159,6 +195,51 @@ namespace LuminaBox.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("CK_BoxItems_Capacity", "\"Capacity\" > 0");
                         });
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.BoxItemImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BoxItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoxItemId", "SortOrder");
+
+                    b.ToTable("BoxItemImages");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.CakeCategory", b =>
@@ -180,17 +261,16 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("OrganizerId")
-                        .HasColumnType("uuid");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -200,7 +280,7 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizerId", "Name")
+                    b.HasIndex("Name")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
@@ -258,9 +338,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid>("CartId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("CategoryId")
-                        .HasColumnType("uuid");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -273,9 +350,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid?>("FillingId")
-                        .HasColumnType("uuid");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -283,7 +357,7 @@ namespace LuminaBox.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid?>("ProductId")
+                    b.Property<Guid?>("ProductItemId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("Quantity")
@@ -308,11 +382,7 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasIndex("CartId");
 
-                    b.HasIndex("CategoryId");
-
-                    b.HasIndex("FillingId");
-
-                    b.HasIndex("ProductId");
+                    b.HasIndex("ProductItemId");
 
                     b.HasIndex("StallId");
 
@@ -321,23 +391,22 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasDatabaseName("IX_CartItems_CartId_BoxItemId_Online")
                         .HasFilter("\"IsDeleted\" = false AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NULL");
 
+                    b.HasIndex("CartId", "ProductItemId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CartItems_CartId_ProductItemId_Online")
+                        .HasFilter("\"IsDeleted\" = false AND \"ProductItemId\" IS NOT NULL AND \"StallId\" IS NULL");
+
                     b.HasIndex("CartId", "BoxItemId", "StallId")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
 
-                    b.HasIndex("CartId", "ProductId", "CategoryId", "FillingId")
+                    b.HasIndex("CartId", "ProductItemId", "StallId")
                         .IsUnique()
-                        .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Online")
-                        .HasFilter("\"IsDeleted\" = false AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NULL");
-
-                    b.HasIndex("CartId", "ProductId", "CategoryId", "FillingId", "StallId")
-                        .IsUnique()
-                        .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Stall")
-                        .HasFilter("\"IsDeleted\" = false AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
+                        .HasFilter("\"IsDeleted\" = false AND \"ProductItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
 
                     b.ToTable("CartItems", t =>
                         {
-                            t.HasCheckConstraint("CK_CartItems_ItemType_Target", "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL AND \"CategoryId\" IS NOT NULL AND \"FillingId\" IS NOT NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"CategoryId\" IS NULL AND \"FillingId\" IS NULL)");
+                            t.HasCheckConstraint("CK_CartItems_ItemType_Target", "(\"ItemType\" = 'Product' AND \"ProductItemId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductItemId\" IS NULL)");
 
                             t.HasCheckConstraint("CK_CartItems_Quantity", "\"Quantity\" > 0");
 
@@ -406,6 +475,58 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.HasIndex("OrganizerId");
 
                     b.ToTable("Commissions");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.District", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("GhnDistrictId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProvinceId", "Code")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("Districts");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.EmailOtp", b =>
@@ -696,15 +817,17 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<Guid>("OrganizerId")
-                        .HasColumnType("uuid");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -714,7 +837,7 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizerId", "Name")
+                    b.HasIndex("Name")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
@@ -808,10 +931,8 @@ namespace LuminaBox.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<string>("AddressDetail")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
+                    b.Property<Guid?>("AddressId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("CancelReason")
                         .HasColumnType("text");
@@ -837,13 +958,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("GhnOrderCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("GhnStatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                    b.Property<string>("FulfillmentType")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -862,6 +979,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("PickupAddressId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal>("PlatformDiscount")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -875,11 +995,7 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("ShippingAddress")
-                        .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<Guid?>("ShippingAddressId")
-                        .HasColumnType("uuid");
 
                     b.Property<decimal>("ShippingFee")
                         .HasPrecision(18, 2)
@@ -896,22 +1012,6 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
 
-                    b.Property<int>("ToProvinceId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ToProvinceName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<int>("ToWardId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ToWardName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
                     b.Property<decimal>("TotalAmount")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)");
@@ -927,14 +1027,13 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("GhnOrderCode")
-                        .HasFilter("\"IsDeleted\" = false");
+                    b.HasIndex("AddressId");
 
                     b.HasIndex("OrderCode")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
-                    b.HasIndex("ShippingAddressId");
+                    b.HasIndex("PickupAddressId");
 
                     b.HasIndex("StallId");
 
@@ -1405,6 +1504,70 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.ToTable("Payments");
                 });
 
+            modelBuilder.Entity("LuminaBox.Domain.Entities.PriceTier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BoxItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("MinQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ProductItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoxItemId", "MinQuantity")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false AND \"BoxItemId\" IS NOT NULL");
+
+                    b.HasIndex("ProductItemId", "MinQuantity")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false AND \"ProductItemId\" IS NOT NULL");
+
+                    b.ToTable("PriceTiers", t =>
+                        {
+                            t.HasCheckConstraint("CK_PriceTiers_ItemType_Target", "(\"ItemType\" = 'Product' AND \"ProductItemId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductItemId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_PriceTiers_MinQuantity", "\"MinQuantity\" >= 2");
+
+                            t.HasCheckConstraint("CK_PriceTiers_UnitPrice", "\"UnitPrice\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("LuminaBox.Domain.Entities.Product", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1431,7 +1594,8 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("OrganizerId")
                         .HasColumnType("uuid");
@@ -1455,56 +1619,7 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.ToTable("Products");
                 });
 
-            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductImage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("ImageUrl")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsPrimary")
-                        .HasColumnType("boolean");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("ProductId", "IsPrimary");
-
-                    b.ToTable("ProductImages");
-                });
-
-            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductVariant", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductItem", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -1525,11 +1640,27 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("EggCount")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("FillingId")
                         .HasColumnType("uuid");
 
+                    b.Property<decimal>("HeightCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<decimal>("LengthCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<decimal>("Price")
                         .HasPrecision(12, 2)
@@ -1544,34 +1675,40 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Weight")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("WidthCm")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("FillingId");
 
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("ProductId", "CategoryId", "FillingId")
+                    b.HasIndex("ProductId", "CategoryId", "FillingId", "EggCount", "Weight")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
-                    b.ToTable("ProductVariants", t =>
+                    b.ToTable("ProductItems", t =>
                         {
-                            t.HasCheckConstraint("CK_ProductVariants_Price", "\"Price\" > 0");
+                            t.HasCheckConstraint("CK_ProductItems_Dimensions", "\"LengthCm\" > 0 AND \"WidthCm\" > 0 AND \"HeightCm\" > 0");
+
+                            t.HasCheckConstraint("CK_ProductItems_EggCount", "\"EggCount\" >= 0");
+
+                            t.HasCheckConstraint("CK_ProductItems_Price", "\"Price\" > 0");
+
+                            t.HasCheckConstraint("CK_ProductItems_Weight", "\"Weight\" > 0");
                         });
                 });
 
-            modelBuilder.Entity("LuminaBox.Domain.Entities.ShippingAddress", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductItemImage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<string>("AddressDetail")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1585,45 +1722,63 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsDefault")
-                        .HasColumnType("boolean");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Label")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<Guid>("OwnerId")
+                    b.Property<Guid>("ProductItemId")
                         .HasColumnType("uuid");
 
-                    b.Property<string>("OwnerType")
-                        .IsRequired()
-                        .HasColumnType("text");
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
 
-                    b.Property<string>("ReceiverName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("ReceiverPhone")
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductItemId", "SortOrder");
+
+                    b.ToTable("ProductItemImages");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Province", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
-                    b.Property<int>("ToProvinceId")
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("GhnProvinceId")
                         .HasColumnType("integer");
 
-                    b.Property<string>("ToProvinceName")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
 
-                    b.Property<int>("ToWardId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ToWardName")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
@@ -1636,14 +1791,11 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OwnerType", "OwnerId")
+                    b.HasIndex("Code")
                         .IsUnique()
-                        .HasDatabaseName("UX_ShippingAddresses_Owner_Single")
-                        .HasFilter("\"OwnerType\" IN ('Organizer', 'Stall') AND \"IsDeleted\" = false");
+                        .HasFilter("\"IsDeleted\" = false");
 
-                    b.HasIndex("OwnerType", "OwnerId", "IsDefault");
-
-                    b.ToTable("ShippingAddresses");
+                    b.ToTable("Provinces");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Stall", b =>
@@ -1651,6 +1803,11 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AddressLine")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -1671,15 +1828,38 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
+                    b.Property<Guid>("DistrictId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
-                    b.Property<string>("Location")
-                        .HasColumnType("text");
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("MapRefId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<string>("NewProvinceName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("NewWardName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("ProvinceId")
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("RentalPrice")
                         .HasPrecision(12, 2)
@@ -1695,13 +1875,134 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid>("WardId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
+                    b.HasIndex("DistrictId");
+
+                    b.HasIndex("ProvinceId");
+
+                    b.HasIndex("WardId");
+
                     b.ToTable("Stalls");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.StallBoxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BoxItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("StallId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoxItemId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StallBoxItems_BoxItem_Online")
+                        .HasFilter("\"IsDeleted\" = false AND \"StallId\" IS NULL");
+
+                    b.HasIndex("StallId", "BoxItemId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false AND \"StallId\" IS NOT NULL");
+
+                    b.ToTable("StallBoxItems", t =>
+                        {
+                            t.HasCheckConstraint("CK_StallBoxItems_StockQuantity", "\"StockQuantity\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.StallProductItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ProductItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("StallId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductItemId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StallProductItems_ProductItem_Online")
+                        .HasFilter("\"IsDeleted\" = false AND \"StallId\" IS NULL");
+
+                    b.HasIndex("StallId", "ProductItemId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false AND \"StallId\" IS NOT NULL");
+
+                    b.ToTable("StallProductItems", t =>
+                        {
+                            t.HasCheckConstraint("CK_StallProductItems_StockQuantity", "\"StockQuantity\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.StallRental", b =>
@@ -2151,60 +2452,92 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.ToTable("WalletTransactions");
                 });
 
-            modelBuilder.Entity("ProductStalls", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Ward", b =>
                 {
-                    b.Property<Guid>("ProductId")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("StallId")
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
-                    b.HasKey("ProductId", "StallId");
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.HasIndex("StallId");
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid");
 
-                    b.ToTable("ProductStalls", (string)null);
+                    b.Property<Guid>("DistrictId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("GhnWardCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DistrictId", "Code")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("Wards");
                 });
 
-            modelBuilder.Entity("BoxItemProducts", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Address", b =>
                 {
-                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", null)
+                    b.HasOne("LuminaBox.Domain.Entities.District", "District")
                         .WithMany()
-                        .HasForeignKey("BoxItemId")
+                        .HasForeignKey("DistrictId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LuminaBox.Domain.Entities.Product", null)
+                    b.HasOne("LuminaBox.Domain.Entities.Province", "Province")
                         .WithMany()
-                        .HasForeignKey("ProductId")
+                        .HasForeignKey("ProvinceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
 
-            modelBuilder.Entity("BoxItemStalls", b =>
-                {
-                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", null)
+                    b.HasOne("LuminaBox.Domain.Entities.User", "User")
                         .WithMany()
-                        .HasForeignKey("BoxItemId")
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LuminaBox.Domain.Entities.Stall", null)
+                    b.HasOne("LuminaBox.Domain.Entities.Ward", "Ward")
                         .WithMany()
-                        .HasForeignKey("StallId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("LuminaBox.Domain.Entities.BoxImage", b =>
-                {
-                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
-                        .WithMany("Images")
-                        .HasForeignKey("BoxItemId")
+                        .HasForeignKey("WardId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("BoxItem");
+                    b.Navigation("District");
+
+                    b.Navigation("Province");
+
+                    b.Navigation("User");
+
+                    b.Navigation("Ward");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.BoxItem", b =>
@@ -2218,15 +2551,15 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Organizer");
                 });
 
-            modelBuilder.Entity("LuminaBox.Domain.Entities.CakeCategory", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.BoxItemImage", b =>
                 {
-                    b.HasOne("LuminaBox.Domain.Entities.Organizer", "Organizer")
-                        .WithMany("CakeCategories")
-                        .HasForeignKey("OrganizerId")
+                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
+                        .WithMany("Images")
+                        .HasForeignKey("BoxItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Organizer");
+                    b.Navigation("BoxItem");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Cart", b =>
@@ -2243,7 +2576,7 @@ namespace LuminaBox.Infrastructure.Migrations
             modelBuilder.Entity("LuminaBox.Domain.Entities.CartItem", b =>
                 {
                     b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
-                        .WithMany("CartItems")
+                        .WithMany()
                         .HasForeignKey("BoxItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -2253,19 +2586,9 @@ namespace LuminaBox.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LuminaBox.Domain.Entities.CakeCategory", "Category")
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
                         .WithMany()
-                        .HasForeignKey("CategoryId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("LuminaBox.Domain.Entities.Filling", "Filling")
-                        .WithMany()
-                        .HasForeignKey("FillingId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
-                        .WithMany("CartItems")
-                        .HasForeignKey("ProductId")
+                        .HasForeignKey("ProductItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("LuminaBox.Domain.Entities.Stall", "Stall")
@@ -2277,11 +2600,7 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.Navigation("Cart");
 
-                    b.Navigation("Category");
-
-                    b.Navigation("Filling");
-
-                    b.Navigation("Product");
+                    b.Navigation("ProductItem");
 
                     b.Navigation("Stall");
                 });
@@ -2303,6 +2622,17 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Organizer");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.District", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.Province", "Province")
+                        .WithMany("Districts")
+                        .HasForeignKey("ProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Province");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.EmailOtp", b =>
@@ -2375,17 +2705,6 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Feedback");
                 });
 
-            modelBuilder.Entity("LuminaBox.Domain.Entities.Filling", b =>
-                {
-                    b.HasOne("LuminaBox.Domain.Entities.Organizer", "Organizer")
-                        .WithMany("Fillings")
-                        .HasForeignKey("OrganizerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Organizer");
-                });
-
             modelBuilder.Entity("LuminaBox.Domain.Entities.Notification", b =>
                 {
                     b.HasOne("LuminaBox.Domain.Entities.User", "ActorUser")
@@ -2413,15 +2732,20 @@ namespace LuminaBox.Infrastructure.Migrations
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Order", b =>
                 {
+                    b.HasOne("LuminaBox.Domain.Entities.Address", "Address")
+                        .WithMany()
+                        .HasForeignKey("AddressId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("LuminaBox.Domain.Entities.Organizer", "Organizer")
                         .WithMany("Orders")
                         .HasForeignKey("OrganizerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LuminaBox.Domain.Entities.ShippingAddress", "ShippingAddressRef")
+                    b.HasOne("LuminaBox.Domain.Entities.Address", "PickupAddress")
                         .WithMany()
-                        .HasForeignKey("ShippingAddressId")
+                        .HasForeignKey("PickupAddressId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("LuminaBox.Domain.Entities.Stall", "Stall")
@@ -2435,9 +2759,11 @@ namespace LuminaBox.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.Navigation("Address");
+
                     b.Navigation("Organizer");
 
-                    b.Navigation("ShippingAddressRef");
+                    b.Navigation("PickupAddress");
 
                     b.Navigation("Stall");
 
@@ -2465,7 +2791,7 @@ namespace LuminaBox.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
-                        .WithMany("BoxSelections")
+                        .WithMany()
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2482,7 +2808,7 @@ namespace LuminaBox.Infrastructure.Migrations
             modelBuilder.Entity("LuminaBox.Domain.Entities.OrderItem", b =>
                 {
                     b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
-                        .WithMany("OrderItems")
+                        .WithMany()
                         .HasForeignKey("BoxItemId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -2503,7 +2829,7 @@ namespace LuminaBox.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
-                        .WithMany("OrderItems")
+                        .WithMany()
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -2605,6 +2931,23 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("LuminaBox.Domain.Entities.PriceTier", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
+                        .WithMany("PriceTiers")
+                        .HasForeignKey("BoxItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
+                        .WithMany("PriceTiers")
+                        .HasForeignKey("ProductItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BoxItem");
+
+                    b.Navigation("ProductItem");
+                });
+
             modelBuilder.Entity("LuminaBox.Domain.Entities.Product", b =>
                 {
                     b.HasOne("LuminaBox.Domain.Entities.Organizer", "Organizer")
@@ -2616,33 +2959,22 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Organizer");
                 });
 
-            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductImage", b =>
-                {
-                    b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
-                        .WithMany("Images")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-                });
-
-            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductVariant", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductItem", b =>
                 {
                     b.HasOne("LuminaBox.Domain.Entities.CakeCategory", "Category")
-                        .WithMany("Variants")
+                        .WithMany("ProductItems")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("LuminaBox.Domain.Entities.Filling", "Filling")
-                        .WithMany("Variants")
+                        .WithMany("ProductItems")
                         .HasForeignKey("FillingId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("LuminaBox.Domain.Entities.Product", "Product")
-                        .WithMany("Variants")
+                        .WithMany("Items")
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -2652,6 +2984,80 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Filling");
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductItemImage", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
+                        .WithMany("Images")
+                        .HasForeignKey("ProductItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductItem");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Stall", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.District", "District")
+                        .WithMany()
+                        .HasForeignKey("DistrictId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LuminaBox.Domain.Entities.Province", "Province")
+                        .WithMany()
+                        .HasForeignKey("ProvinceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LuminaBox.Domain.Entities.Ward", "Ward")
+                        .WithMany()
+                        .HasForeignKey("WardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("District");
+
+                    b.Navigation("Province");
+
+                    b.Navigation("Ward");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.StallBoxItem", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.BoxItem", "BoxItem")
+                        .WithMany("Stocks")
+                        .HasForeignKey("BoxItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LuminaBox.Domain.Entities.Stall", "Stall")
+                        .WithMany("StallBoxItems")
+                        .HasForeignKey("StallId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("BoxItem");
+
+                    b.Navigation("Stall");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.StallProductItem", b =>
+                {
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
+                        .WithMany("Stocks")
+                        .HasForeignKey("ProductItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LuminaBox.Domain.Entities.Stall", "Stall")
+                        .WithMany("StallProductItems")
+                        .HasForeignKey("StallId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ProductItem");
+
+                    b.Navigation("Stall");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.StallRental", b =>
@@ -2779,38 +3185,39 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Wallet");
                 });
 
-            modelBuilder.Entity("ProductStalls", b =>
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Ward", b =>
                 {
-                    b.HasOne("LuminaBox.Domain.Entities.Product", null)
-                        .WithMany()
-                        .HasForeignKey("ProductId")
+                    b.HasOne("LuminaBox.Domain.Entities.District", "District")
+                        .WithMany("Wards")
+                        .HasForeignKey("DistrictId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("LuminaBox.Domain.Entities.Stall", null)
-                        .WithMany()
-                        .HasForeignKey("StallId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                    b.Navigation("District");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.BoxItem", b =>
                 {
-                    b.Navigation("CartItems");
-
                     b.Navigation("Images");
 
-                    b.Navigation("OrderItems");
+                    b.Navigation("PriceTiers");
+
+                    b.Navigation("Stocks");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.CakeCategory", b =>
                 {
-                    b.Navigation("Variants");
+                    b.Navigation("ProductItems");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Cart", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.District", b =>
+                {
+                    b.Navigation("Wards");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Event", b =>
@@ -2825,7 +3232,7 @@ namespace LuminaBox.Infrastructure.Migrations
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Filling", b =>
                 {
-                    b.Navigation("Variants");
+                    b.Navigation("ProductItems");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Order", b =>
@@ -2854,15 +3261,11 @@ namespace LuminaBox.Infrastructure.Migrations
                 {
                     b.Navigation("BoxItems");
 
-                    b.Navigation("CakeCategories");
-
                     b.Navigation("Commissions");
 
                     b.Navigation("Events");
 
                     b.Navigation("Feedbacks");
-
-                    b.Navigation("Fillings");
 
                     b.Navigation("Orders");
 
@@ -2882,15 +3285,21 @@ namespace LuminaBox.Infrastructure.Migrations
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Product", b =>
                 {
-                    b.Navigation("BoxSelections");
+                    b.Navigation("Items");
+                });
 
-                    b.Navigation("CartItems");
-
+            modelBuilder.Entity("LuminaBox.Domain.Entities.ProductItem", b =>
+                {
                     b.Navigation("Images");
 
-                    b.Navigation("OrderItems");
+                    b.Navigation("PriceTiers");
 
-                    b.Navigation("Variants");
+                    b.Navigation("Stocks");
+                });
+
+            modelBuilder.Entity("LuminaBox.Domain.Entities.Province", b =>
+                {
+                    b.Navigation("Districts");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.Stall", b =>
@@ -2902,6 +3311,10 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Registrations");
 
                     b.Navigation("Rentals");
+
+                    b.Navigation("StallBoxItems");
+
+                    b.Navigation("StallProductItems");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.User", b =>

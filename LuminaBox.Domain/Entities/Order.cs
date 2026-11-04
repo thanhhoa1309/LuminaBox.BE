@@ -18,21 +18,17 @@ namespace LuminaBox.Domain.Entities
 
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
-        public string ShippingAddress { get; set; } = string.Empty;
+        public string? ShippingAddress { get; set; }
         public string? Note { get; set; }
 
-        public Guid? ShippingAddressId { get; set; }
-        public ShippingAddress? ShippingAddressRef { get; set; }
+        public Guid? AddressId { get; set; }
+        public Address? Address { get; set; }
 
-        public int ToProvinceId { get; set; }
-        public int ToWardId { get; set; }
-        public string ToProvinceName { get; set; } = string.Empty;
-        public string ToWardName { get; set; } = string.Empty;
-        public string AddressDetail { get; set; } = string.Empty;
+        public Guid? PickupAddressId { get; set; }
+        public Address? PickupAddress { get; set; }
 
+        public FulfillmentType FulfillmentType { get; set; } = FulfillmentType.Delivery;
         public decimal ShippingFee { get; set; }
-        public string? GhnOrderCode { get; set; }
-        public string? GhnStatus { get; set; }
 
         public decimal SubtotalAmount { get; set; }
 

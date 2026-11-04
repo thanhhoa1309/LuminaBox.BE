@@ -23,8 +23,6 @@ namespace LuminaBox.Domain.Entities
 
         public ICollection<OrganizerRegistration> Registrations { get; set; } = new List<OrganizerRegistration>();
         public ICollection<StallRental> StallRentals { get; set; } = new List<StallRental>();
-        public ICollection<CakeCategory> CakeCategories { get; set; } = new List<CakeCategory>();
-        public ICollection<Filling> Fillings { get; set; } = new List<Filling>();
         public ICollection<Product> Products { get; set; } = new List<Product>();
         public ICollection<BoxItem> BoxItems { get; set; } = new List<BoxItem>();
         public ICollection<Voucher> Vouchers { get; set; } = new List<Voucher>();

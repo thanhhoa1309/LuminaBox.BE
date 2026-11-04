@@ -22,10 +22,13 @@ namespace LuminaBox.Infrastructure.Persistence
         public DbSet<CakeCategory> CakeCategories => Set<CakeCategory>();
         public DbSet<Filling> Fillings => Set<Filling>();
         public DbSet<Product> Products => Set<Product>();
-        public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
-        public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+        public DbSet<ProductItem> ProductItems => Set<ProductItem>();
+        public DbSet<ProductItemImage> ProductItemImages => Set<ProductItemImage>();
+        public DbSet<StallProductItem> StallProductItems => Set<StallProductItem>();
+        public DbSet<StallBoxItem> StallBoxItems => Set<StallBoxItem>();
+        public DbSet<PriceTier> PriceTiers => Set<PriceTier>();
         public DbSet<BoxItem> BoxItems => Set<BoxItem>();
-        public DbSet<BoxImage> BoxImages => Set<BoxImage>();
+        public DbSet<BoxItemImage> BoxItemImages => Set<BoxItemImage>();
         public DbSet<Cart> Carts => Set<Cart>();
         public DbSet<CartItem> CartItems => Set<CartItem>();
         public DbSet<Voucher> Vouchers => Set<Voucher>();
@@ -45,7 +48,10 @@ namespace LuminaBox.Infrastructure.Persistence
         public DbSet<EventImage> EventImages => Set<EventImage>();
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<EmailOtp> EmailOtps => Set<EmailOtp>();
-        public DbSet<ShippingAddress> ShippingAddresses => Set<ShippingAddress>();
+        public DbSet<Province> Provinces => Set<Province>();
+        public DbSet<District> Districts => Set<District>();
+        public DbSet<Ward> Wards => Set<Ward>();
+        public DbSet<Address> Addresses => Set<Address>();
 
         protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
         {
@@ -60,6 +66,7 @@ namespace LuminaBox.Infrastructure.Persistence
             configurationBuilder.Properties<RentalStatus>().HaveConversion<string>();
             configurationBuilder.Properties<ProductStatus>().HaveConversion<string>();
             configurationBuilder.Properties<OrderStatus>().HaveConversion<string>();
+            configurationBuilder.Properties<FulfillmentType>().HaveConversion<string>();
             configurationBuilder.Properties<OrderItemType>().HaveConversion<string>();
             configurationBuilder.Properties<PaymentMethod>().HaveConversion<string>();
             configurationBuilder.Properties<PaymentStatus>().HaveConversion<string>();
@@ -74,8 +81,7 @@ namespace LuminaBox.Infrastructure.Persistence
             configurationBuilder.Properties<NotificationChannel>().HaveConversion<string>();
             configurationBuilder.Properties<SendStatus>().HaveConversion<string>();
             configurationBuilder.Properties<OtpPurpose>().HaveConversion<string>();
-            configurationBuilder.Properties<AddressOwnerType>().HaveConversion<string>();
-        }
+            configurationBuilder.Properties<AddressType>().HaveConversion<string>();        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -99,9 +105,100 @@ namespace LuminaBox.Infrastructure.Persistence
                 e.HasIndex(x => x.UserId).IsUnique().HasFilter(NotDeletedFilter);
             });
 
+            modelBuilder.Entity<Province>(e =>
+            {
+                e.Property(x => x.Name).HasMaxLength(100);
+                e.Property(x => x.Code).HasMaxLength(20);
+
+                e.HasIndex(x => x.Code).IsUnique().HasFilter(NotDeletedFilter);
+            });
+
+            modelBuilder.Entity<District>(e =>
+            {
+                e.HasOne(x => x.Province)
+                    .WithMany(p => p.Districts)
+                    .HasForeignKey(x => x.ProvinceId);
+
+                e.Property(x => x.Name).HasMaxLength(100);
+                e.Property(x => x.Code).HasMaxLength(20);
+
+                e.HasIndex(x => new { x.ProvinceId, x.Code }).IsUnique().HasFilter(NotDeletedFilter);
+            });
+
+            modelBuilder.Entity<Ward>(e =>
+            {
+                e.HasOne(x => x.District)
+                    .WithMany(d => d.Wards)
+                    .HasForeignKey(x => x.DistrictId);
+
+                e.Property(x => x.Name).HasMaxLength(100);
+                e.Property(x => x.Code).HasMaxLength(20);
+                e.Property(x => x.GhnWardCode).HasMaxLength(20);
+
+                e.HasIndex(x => new { x.DistrictId, x.Code }).IsUnique().HasFilter(NotDeletedFilter);
+            });
+
+            modelBuilder.Entity<Address>(e =>
+            {
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId);
+
+                e.HasOne(x => x.Province)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProvinceId);
+
+                e.HasOne(x => x.District)
+                    .WithMany()
+                    .HasForeignKey(x => x.DistrictId);
+
+                e.HasOne(x => x.Ward)
+                    .WithMany()
+                    .HasForeignKey(x => x.WardId);
+
+                e.Property(x => x.ContactName).HasMaxLength(100);
+                e.Property(x => x.Phone).HasMaxLength(20);
+                e.Property(x => x.AddressLine).HasMaxLength(500);
+                e.Property(x => x.Latitude).HasPrecision(9, 6);
+                e.Property(x => x.Longitude).HasPrecision(9, 6);
+                e.Property(x => x.MapRefId).HasMaxLength(255);
+                e.Property(x => x.NewProvinceName).HasMaxLength(100);
+                e.Property(x => x.NewWardName).HasMaxLength(100);
+
+                e.HasIndex(x => x.UserId);
+                e.HasIndex(x => x.DistrictId);
+
+                e.HasIndex(x => new { x.UserId, x.Type })
+                    .IsUnique()
+                    .HasFilter($"\"IsDefault\" = true AND {NotDeletedFilter}")
+                    .HasDatabaseName("UX_Addresses_User_Type_Default");
+            });
+
             modelBuilder.Entity<Stall>(e =>
             {
+                e.HasOne(x => x.Province)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProvinceId);
+
+                e.HasOne(x => x.District)
+                    .WithMany()
+                    .HasForeignKey(x => x.DistrictId);
+
+                e.HasOne(x => x.Ward)
+                    .WithMany()
+                    .HasForeignKey(x => x.WardId);
+
+                e.Property(x => x.AddressLine).HasMaxLength(500);
+                e.Property(x => x.Latitude).HasPrecision(9, 6);
+                e.Property(x => x.Longitude).HasPrecision(9, 6);
+                e.Property(x => x.MapRefId).HasMaxLength(255);
+                e.Property(x => x.NewProvinceName).HasMaxLength(100);
+                e.Property(x => x.NewWardName).HasMaxLength(100);
+
                 e.HasIndex(x => x.Code).IsUnique().HasFilter(NotDeletedFilter);
+                e.HasIndex(x => x.ProvinceId);
+                e.HasIndex(x => x.DistrictId);
+                e.HasIndex(x => x.WardId);
             });
 
             modelBuilder.Entity<OrganizerRegistration>(e =>
@@ -169,20 +266,18 @@ namespace LuminaBox.Infrastructure.Persistence
 
             modelBuilder.Entity<CakeCategory>(e =>
             {
-                e.HasOne(x => x.Organizer)
-                    .WithMany(o => o.CakeCategories)
-                    .HasForeignKey(x => x.OrganizerId);
+                e.Property(x => x.Name).HasMaxLength(100);
+                e.Property(x => x.Description).HasMaxLength(500);
 
-                e.HasIndex(x => new { x.OrganizerId, x.Name }).IsUnique().HasFilter(NotDeletedFilter);
+                e.HasIndex(x => x.Name).IsUnique().HasFilter(NotDeletedFilter);
             });
 
             modelBuilder.Entity<Filling>(e =>
             {
-                e.HasOne(x => x.Organizer)
-                    .WithMany(o => o.Fillings)
-                    .HasForeignKey(x => x.OrganizerId);
+                e.Property(x => x.Name).HasMaxLength(100);
+                e.Property(x => x.Description).HasMaxLength(500);
 
-                e.HasIndex(x => new { x.OrganizerId, x.Name }).IsUnique().HasFilter(NotDeletedFilter);
+                e.HasIndex(x => x.Name).IsUnique().HasFilter(NotDeletedFilter);
             });
 
             modelBuilder.Entity<Product>(e =>
@@ -191,45 +286,45 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany(o => o.Products)
                     .HasForeignKey(x => x.OrganizerId);
 
-                e.HasMany(x => x.Stalls)
-                    .WithMany(s => s.Products)
-                    .UsingEntity<Dictionary<string, object>>(
-                        "ProductStalls",
-                        j => j.HasOne<Stall>().WithMany().HasForeignKey("StallId"),
-                        j => j.HasOne<Product>().WithMany().HasForeignKey("ProductId"),
-                        j =>
-                        {
-                            j.HasKey("ProductId", "StallId");
-                            j.ToTable("ProductStalls");
-                        });
+                e.Property(x => x.Name).HasMaxLength(200);
 
                 e.HasIndex(x => x.Status);
                 e.HasIndex(x => x.OrganizerId);
             });
 
-            modelBuilder.Entity<ProductVariant>(e =>
+            modelBuilder.Entity<ProductItem>(e =>
             {
                 e.HasOne(x => x.Product)
-                    .WithMany(p => p.Variants)
+                    .WithMany(p => p.Items)
                     .HasForeignKey(x => x.ProductId);
 
                 e.HasOne(x => x.Category)
-                    .WithMany(c => c.Variants)
+                    .WithMany(c => c.ProductItems)
                     .HasForeignKey(x => x.CategoryId);
 
                 e.HasOne(x => x.Filling)
-                    .WithMany(f => f.Variants)
+                    .WithMany(f => f.ProductItems)
                     .HasForeignKey(x => x.FillingId);
 
-                e.HasIndex(x => new { x.ProductId, x.CategoryId, x.FillingId })
+                e.Property(x => x.Name).HasMaxLength(200);
+                e.Property(x => x.LengthCm).HasPrecision(6, 2);
+                e.Property(x => x.WidthCm).HasPrecision(6, 2);
+                e.Property(x => x.HeightCm).HasPrecision(6, 2);
+
+                e.HasIndex(x => new { x.ProductId, x.CategoryId, x.FillingId, x.EggCount, x.Weight })
                     .IsUnique()
                     .HasFilter(NotDeletedFilter);
 
-                e.HasIndex(x => x.ProductId);
                 e.HasIndex(x => x.CategoryId);
                 e.HasIndex(x => x.FillingId);
 
-                e.ToTable(t => t.HasCheckConstraint("CK_ProductVariants_Price", "\"Price\" > 0"));
+                e.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_ProductItems_Price", "\"Price\" > 0");
+                    t.HasCheckConstraint("CK_ProductItems_EggCount", "\"EggCount\" >= 0");
+                    t.HasCheckConstraint("CK_ProductItems_Weight", "\"Weight\" > 0");
+                    t.HasCheckConstraint("CK_ProductItems_Dimensions", "\"LengthCm\" > 0 AND \"WidthCm\" > 0 AND \"HeightCm\" > 0");
+                });
             });
 
             modelBuilder.Entity<BoxItem>(e =>
@@ -238,29 +333,10 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany(o => o.BoxItems)
                     .HasForeignKey(x => x.OrganizerId);
 
-                e.HasMany(x => x.Stalls)
-                    .WithMany(s => s.BoxItems)
-                    .UsingEntity<Dictionary<string, object>>(
-                        "BoxItemStalls",
-                        j => j.HasOne<Stall>().WithMany().HasForeignKey("StallId"),
-                        j => j.HasOne<BoxItem>().WithMany().HasForeignKey("BoxItemId"),
-                        j =>
-                        {
-                            j.HasKey("BoxItemId", "StallId");
-                            j.ToTable("BoxItemStalls");
-                        });
-
-                e.HasMany(x => x.Products)
-                    .WithMany(p => p.BoxItems)
-                    .UsingEntity<Dictionary<string, object>>(
-                        "BoxItemProducts",
-                        j => j.HasOne<Product>().WithMany().HasForeignKey("ProductId"),
-                        j => j.HasOne<BoxItem>().WithMany().HasForeignKey("BoxItemId"),
-                        j =>
-                        {
-                            j.HasKey("BoxItemId", "ProductId");
-                            j.ToTable("BoxItemProducts");
-                        });
+                e.Property(x => x.Name).HasMaxLength(200);
+                e.Property(x => x.LengthCm).HasPrecision(6, 2);
+                e.Property(x => x.WidthCm).HasPrecision(6, 2);
+                e.Property(x => x.HeightCm).HasPrecision(6, 2);
 
                 e.HasIndex(x => x.Status);
                 e.HasIndex(x => x.OrganizerId);
@@ -283,21 +359,13 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany(c => c.Items)
                     .HasForeignKey(x => x.CartId);
 
-                e.HasOne(x => x.Product)
-                    .WithMany(p => p.CartItems)
-                    .HasForeignKey(x => x.ProductId);
+                e.HasOne(x => x.ProductItem)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProductItemId);
 
                 e.HasOne(x => x.BoxItem)
-                    .WithMany(b => b.CartItems)
+                    .WithMany()
                     .HasForeignKey(x => x.BoxItemId);
-
-                e.HasOne(x => x.Category)
-                    .WithMany()
-                    .HasForeignKey(x => x.CategoryId);
-
-                e.HasOne(x => x.Filling)
-                    .WithMany()
-                    .HasForeignKey(x => x.FillingId);
 
                 e.HasOne(x => x.Stall)
                     .WithMany(s => s.CartItems)
@@ -305,18 +373,15 @@ namespace LuminaBox.Infrastructure.Persistence
 
                 e.HasIndex(x => x.CartId);
                 e.HasIndex(x => x.StallId);
-                e.HasIndex(x => x.CategoryId);
-                e.HasIndex(x => x.FillingId);
 
-                // Same product variant (Category×Filling) once per stall; online once per cart
-                e.HasIndex(x => new { x.CartId, x.ProductId, x.CategoryId, x.FillingId, x.StallId })
+                // Same product/box can appear once per stall; online (StallId null) once per cart
+                e.HasIndex(x => new { x.CartId, x.ProductItemId, x.StallId })
                     .IsUnique()
-                    .HasFilter($"{NotDeletedFilter} AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NOT NULL")
-                    .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Stall");
-                e.HasIndex(x => new { x.CartId, x.ProductId, x.CategoryId, x.FillingId })
+                    .HasFilter($"{NotDeletedFilter} AND \"ProductItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
+                e.HasIndex(x => new { x.CartId, x.ProductItemId })
                     .IsUnique()
-                    .HasFilter($"{NotDeletedFilter} AND \"ProductId\" IS NOT NULL AND \"StallId\" IS NULL")
-                    .HasDatabaseName("IX_CartItems_CartId_Product_Variant_Online");
+                    .HasFilter($"{NotDeletedFilter} AND \"ProductItemId\" IS NOT NULL AND \"StallId\" IS NULL")
+                    .HasDatabaseName("IX_CartItems_CartId_ProductItemId_Online");
                 e.HasIndex(x => new { x.CartId, x.BoxItemId, x.StallId })
                     .IsUnique()
                     .HasFilter($"{NotDeletedFilter} AND \"BoxItemId\" IS NOT NULL AND \"StallId\" IS NOT NULL");
@@ -329,7 +394,7 @@ namespace LuminaBox.Infrastructure.Persistence
                 {
                     t.HasCheckConstraint(
                         "CK_CartItems_ItemType_Target",
-                        "(\"ItemType\" = 'Product' AND \"ProductId\" IS NOT NULL AND \"BoxItemId\" IS NULL AND \"CategoryId\" IS NOT NULL AND \"FillingId\" IS NOT NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductId\" IS NULL AND \"CategoryId\" IS NULL AND \"FillingId\" IS NULL)");
+                        "(\"ItemType\" = 'Product' AND \"ProductItemId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductItemId\" IS NULL)");
                     t.HasCheckConstraint("CK_CartItems_Quantity", "\"Quantity\" > 0");
                     t.HasCheckConstraint("CK_CartItems_UnitPrice", "\"UnitPrice\" > 0");
                 });
@@ -403,21 +468,19 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany(o => o.Orders)
                     .HasForeignKey(x => x.OrganizerId);
 
-                e.HasOne(x => x.ShippingAddressRef)
+                e.HasOne(x => x.Address)
                     .WithMany()
-                    .HasForeignKey(x => x.ShippingAddressId);
+                    .HasForeignKey(x => x.AddressId);
+
+                e.HasOne(x => x.PickupAddress)
+                    .WithMany()
+                    .HasForeignKey(x => x.PickupAddressId);
 
                 e.Property(x => x.ShippingFee).HasPrecision(18, 2);
-                e.Property(x => x.ToProvinceName).HasMaxLength(100);
-                e.Property(x => x.ToWardName).HasMaxLength(100);
-                e.Property(x => x.AddressDetail).HasMaxLength(500);
-                e.Property(x => x.GhnOrderCode).HasMaxLength(50);
-                e.Property(x => x.GhnStatus).HasMaxLength(50);
 
                 e.HasIndex(x => x.OrderCode).IsUnique().HasFilter(NotDeletedFilter);
                 e.HasIndex(x => new { x.UserId, x.Status });
                 e.HasIndex(x => new { x.OrganizerId, x.Status });
-                e.HasIndex(x => x.GhnOrderCode).HasFilter(NotDeletedFilter);
             });
 
             modelBuilder.Entity<Payment>(e =>
@@ -443,11 +506,11 @@ namespace LuminaBox.Infrastructure.Persistence
                     .HasForeignKey(x => x.OrderId);
 
                 e.HasOne(x => x.Product)
-                    .WithMany(p => p.OrderItems)
+                    .WithMany()
                     .HasForeignKey(x => x.ProductId);
 
                 e.HasOne(x => x.BoxItem)
-                    .WithMany(b => b.OrderItems)
+                    .WithMany()
                     .HasForeignKey(x => x.BoxItemId);
 
                 e.HasOne(x => x.Category)
@@ -474,7 +537,7 @@ namespace LuminaBox.Infrastructure.Persistence
                     .HasForeignKey(x => x.OrderItemId);
 
                 e.HasOne(x => x.Product)
-                    .WithMany(p => p.BoxSelections)
+                    .WithMany()
                     .HasForeignKey(x => x.ProductId);
 
                 e.HasOne(x => x.Category)
@@ -536,24 +599,26 @@ namespace LuminaBox.Infrastructure.Persistence
                     .HasForeignKey(x => x.FeedbackId);
             });
 
-            modelBuilder.Entity<ProductImage>(e =>
+            modelBuilder.Entity<ProductItemImage>(e =>
             {
-                e.HasOne(x => x.Product)
-                    .WithMany(p => p.Images)
-                    .HasForeignKey(x => x.ProductId);
+                e.HasOne(x => x.ProductItem)
+                    .WithMany(i => i.Images)
+                    .HasForeignKey(x => x.ProductItemId);
 
-                e.HasIndex(x => x.ProductId);
-                e.HasIndex(x => new { x.ProductId, x.IsPrimary });
+                e.Property(x => x.Url).HasMaxLength(1000);
+
+                e.HasIndex(x => new { x.ProductItemId, x.SortOrder });
             });
 
-            modelBuilder.Entity<BoxImage>(e =>
+            modelBuilder.Entity<BoxItemImage>(e =>
             {
                 e.HasOne(x => x.BoxItem)
                     .WithMany(b => b.Images)
                     .HasForeignKey(x => x.BoxItemId);
 
-                e.HasIndex(x => x.BoxItemId);
-                e.HasIndex(x => new { x.BoxItemId, x.IsPrimary });
+                e.Property(x => x.Url).HasMaxLength(1000);
+
+                e.HasIndex(x => new { x.BoxItemId, x.SortOrder });
             });
 
             modelBuilder.Entity<Event>(e =>
@@ -649,22 +714,76 @@ namespace LuminaBox.Infrastructure.Persistence
                 e.HasIndex(x => new { x.UserId, x.Purpose });
             });
 
-            modelBuilder.Entity<ShippingAddress>(e =>
+            modelBuilder.Entity<StallProductItem>(e =>
             {
-                e.Property(x => x.Label).HasMaxLength(50);
-                e.Property(x => x.ReceiverName).HasMaxLength(100);
-                e.Property(x => x.ReceiverPhone).HasMaxLength(20);
-                e.Property(x => x.ToProvinceName).HasMaxLength(100);
-                e.Property(x => x.ToWardName).HasMaxLength(100);
-                e.Property(x => x.AddressDetail).HasMaxLength(500);
+                e.HasOne(x => x.Stall)
+                    .WithMany(s => s.StallProductItems)
+                    .HasForeignKey(x => x.StallId);
 
-                e.HasIndex(x => new { x.OwnerType, x.OwnerId, x.IsDefault });
+                e.HasOne(x => x.ProductItem)
+                    .WithMany(i => i.Stocks)
+                    .HasForeignKey(x => x.ProductItemId);
 
-                // Organizer and Stall may have only one active address each
-                e.HasIndex(x => new { x.OwnerType, x.OwnerId })
+                e.HasIndex(x => new { x.StallId, x.ProductItemId })
                     .IsUnique()
-                    .HasFilter($"\"OwnerType\" IN ('Organizer', 'Stall') AND {NotDeletedFilter}")
-                    .HasDatabaseName("UX_ShippingAddresses_Owner_Single");
+                    .HasFilter($"{NotDeletedFilter} AND \"StallId\" IS NOT NULL");
+
+                e.HasIndex(x => x.ProductItemId)
+                    .IsUnique()
+                    .HasFilter($"{NotDeletedFilter} AND \"StallId\" IS NULL")
+                    .HasDatabaseName("UX_StallProductItems_ProductItem_Online");
+
+                e.ToTable(t => t.HasCheckConstraint("CK_StallProductItems_StockQuantity", "\"StockQuantity\" >= 0"));
+            });
+
+            modelBuilder.Entity<StallBoxItem>(e =>
+            {
+                e.HasOne(x => x.Stall)
+                    .WithMany(s => s.StallBoxItems)
+                    .HasForeignKey(x => x.StallId);
+
+                e.HasOne(x => x.BoxItem)
+                    .WithMany(b => b.Stocks)
+                    .HasForeignKey(x => x.BoxItemId);
+
+                e.HasIndex(x => new { x.StallId, x.BoxItemId })
+                    .IsUnique()
+                    .HasFilter($"{NotDeletedFilter} AND \"StallId\" IS NOT NULL");
+
+                e.HasIndex(x => x.BoxItemId)
+                    .IsUnique()
+                    .HasFilter($"{NotDeletedFilter} AND \"StallId\" IS NULL")
+                    .HasDatabaseName("UX_StallBoxItems_BoxItem_Online");
+
+                e.ToTable(t => t.HasCheckConstraint("CK_StallBoxItems_StockQuantity", "\"StockQuantity\" >= 0"));
+            });
+
+            modelBuilder.Entity<PriceTier>(e =>
+            {
+                e.HasOne(x => x.ProductItem)
+                    .WithMany(i => i.PriceTiers)
+                    .HasForeignKey(x => x.ProductItemId);
+
+                e.HasOne(x => x.BoxItem)
+                    .WithMany(b => b.PriceTiers)
+                    .HasForeignKey(x => x.BoxItemId);
+
+                e.HasIndex(x => new { x.ProductItemId, x.MinQuantity })
+                    .IsUnique()
+                    .HasFilter($"{NotDeletedFilter} AND \"ProductItemId\" IS NOT NULL");
+
+                e.HasIndex(x => new { x.BoxItemId, x.MinQuantity })
+                    .IsUnique()
+                    .HasFilter($"{NotDeletedFilter} AND \"BoxItemId\" IS NOT NULL");
+
+                e.ToTable(t =>
+                {
+                    t.HasCheckConstraint(
+                        "CK_PriceTiers_ItemType_Target",
+                        "(\"ItemType\" = 'Product' AND \"ProductItemId\" IS NOT NULL AND \"BoxItemId\" IS NULL) OR (\"ItemType\" = 'Box' AND \"BoxItemId\" IS NOT NULL AND \"ProductItemId\" IS NULL)");
+                    t.HasCheckConstraint("CK_PriceTiers_MinQuantity", "\"MinQuantity\" >= 2");
+                    t.HasCheckConstraint("CK_PriceTiers_UnitPrice", "\"UnitPrice\" > 0");
+                });
             });
 
             // Data is soft-deleted, so a hard delete must never silently cascade

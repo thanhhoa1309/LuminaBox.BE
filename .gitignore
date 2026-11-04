@@ -85,3 +85,7 @@ $RECYCLE.BIN/
 *.bak
 *.swp
 *~
+
+## docs
+*.tools
+*.localDocs
