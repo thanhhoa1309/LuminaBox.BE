@@ -13,7 +13,10 @@ namespace LuminaBox.Application.Mappings
 
             CreateMap<BoxItemImage, ProductImageResponse>();
             CreateMap<PriceTier, PriceTierResponse>();
-            CreateMap<StallBoxItem, StockResponse>();
+            CreateMap<StallBoxItem, StockResponse>()
+                .ForMember(d => d.StallAddress, o => o.MapFrom(s => s.Stall != null
+                    ? s.Stall.AddressLine + ", " + s.Stall.Ward.Name + ", " + s.Stall.Ward.District.Name + ", " + s.Stall.Ward.District.Province.Name
+                    : null));
 
             CreateMap<BoxItem, BoxItemResponse>()
                 .ForMember(d => d.Images, o => o.MapFrom(s => s.Images.OrderBy(i => i.SortOrder)))
