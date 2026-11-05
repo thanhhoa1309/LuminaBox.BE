@@ -131,9 +131,18 @@ namespace LuminaBox.Infrastructure
 
         public async Task TruncateAllApplicationTablesAsync()
         {
+            // Keep geography so seed stalls/addresses can reuse Ward without re-running sync-geo.
+            var preservedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Provinces",
+                "Districts",
+                "Wards",
+                "__EFMigrationsHistory"
+            };
+
             var tables = _context.Model.GetEntityTypes()
                 .Select(t => (Schema: t.GetSchema(), Table: t.GetTableName()))
-                .Where(t => t.Table is not null)
+                .Where(t => t.Table is not null && !preservedTables.Contains(t.Table))
                 .Distinct()
                 .Select(t => t.Schema is null ? $"\"{t.Table}\"" : $"\"{t.Schema}\".\"{t.Table}\"")
                 .ToList();

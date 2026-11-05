@@ -355,8 +355,20 @@
 
 | Method | Route | Quyền | Ý nghĩa |
 |---|---|---|---|
-| POST | `api/seed` | *(dev)* | Sinh dữ liệu mẫu để test. |
-| DELETE | `api/seed` | *(dev)* | Xóa dữ liệu seed / toàn bộ (dùng cẩn thận). |
+| POST | `api/seed` | *(dev)* | Sinh dữ liệu mẫu: users, categories, fillings, stalls, organizers, products, boxes, vouchers, events. Idempotent. Cần có Ward (`sync-geo`) trước. |
+| DELETE | `api/seed` | *(dev)* | Truncate toàn bộ app data (giữ Provinces/Districts/Wards + migration history). |
+
+**Tài khoản mẫu sau seed**
+
+| Email | Password | Role |
+|---|---|---|
+| `manager@luminabox.com` | `Manager@123` | Manager |
+| `user@luminabox.com` | `User@123` | User |
+| `user2@luminabox.com` | `User@123` | User |
+| `user3@luminabox.com` | `User@123` | User |
+| `user4@luminabox.com` | `User@123` | User |
+| `org1@luminabox.com` | `Organization@123` | Organization (Moonlight Bakery + STL-001) |
+| `org2@luminabox.com` | `Organization@123` | Organization (Luna Online) |
 
 > Không dùng trên production.
 

@@ -102,6 +102,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IGhnClient, GhnClient>();
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<IWalletService, WalletService>();
+            services.AddScoped<ISeedService, SeedService>();
 
             return services;
         }
