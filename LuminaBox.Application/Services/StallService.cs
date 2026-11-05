@@ -134,9 +134,11 @@ namespace LuminaBox.Application.Services
                 ?? throw ErrorHelper.NotFound("Stall not found.", "E4.4");
 
             var hasRental = await _unitOfWork.StallRentals.GetQueryable().AnyAsync(r => r.StallId == id);
+            var hasPendingRegistration = await _unitOfWork.OrganizerRegistrations.GetQueryable()
+                .AnyAsync(r => r.StallId == id && r.Status == RegistrationStatus.Pending);
 
-            if (stall.Status != StallStatus.Available || hasRental)
-                throw ErrorHelper.Conflict("Only an available stall without rentals can be deleted.", "E4.3");
+            if (stall.Status != StallStatus.Available || hasRental || hasPendingRegistration)
+                throw ErrorHelper.Conflict("Only an available stall without rentals or pending registrations can be deleted.", "E4.3");
 
             await _unitOfWork.Stalls.SoftRemove(stall);
             await _unitOfWork.SaveChangesAsync();
