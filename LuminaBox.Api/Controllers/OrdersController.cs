@@ -110,7 +110,7 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
-        [HttpPost("{id:guid}/confirm")]
+        [HttpPut("{id:guid}/confirm")]
         [SwaggerOperation(
             Summary = "Confirm pending order",
             Description = "Confirms a pending order and settles wallet and commission for Stripe payments. Requires Organization role.")]
@@ -121,7 +121,7 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
-        [HttpPost("{id:guid}/reject")]
+        [HttpPut("{id:guid}/reject")]
         [SwaggerOperation(
             Summary = "Reject pending order",
             Description = "Rejects a pending order and refunds payment or restores vouchers. Requires Organization role.")]
@@ -132,7 +132,7 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize]
-        [HttpPost("{id:guid}/cancel")]
+        [HttpPut("{id:guid}/cancel")]
         [SwaggerOperation(
             Summary = "Cancel order",
             Description = "Cancels an order by buyer or organizer according to status rules. Requires authentication.")]
@@ -143,7 +143,7 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
-        [HttpPost("{id:guid}/ship")]
+        [HttpPut("{id:guid}/ship")]
         [SwaggerOperation(
             Summary = "Start delivering order",
             Description = "Marks a confirmed order as delivering. Requires Organization role.")]
@@ -154,7 +154,7 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
-        [HttpPost("{id:guid}/mark-delivered")]
+        [HttpPut("{id:guid}/mark-delivered")]
         [SwaggerOperation(
             Summary = "Mark order as delivered",
             Description = "Marks a delivering (or confirmed pickup) order as delivered. Requires Organization role.")]

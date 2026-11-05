@@ -32,7 +32,6 @@ namespace LuminaBox.Application.Dtos.Cart
         public string? StallName { get; set; }
         public Guid? ProductId { get; set; }
         public string? ProductName { get; set; }
-        public Guid? ProductItemId { get; set; }
         public string? ProductItemName { get; set; }
         public int? EggCount { get; set; }
         public int? Weight { get; set; }

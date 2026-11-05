@@ -5,7 +5,9 @@ using LuminaBox.Application.Interface;
 
 namespace LuminaBox.Infrastructure.BackgroundJobs
 {
-   
+    /// <summary>
+    /// Cancels Stripe payments still Pending after 10 minutes (and their orders).
+    /// </summary>
     public class UnpaidPaymentExpireWorker : BackgroundService
     {
         private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);

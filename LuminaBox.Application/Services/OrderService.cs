@@ -17,6 +17,7 @@ namespace LuminaBox.Application.Services
         private readonly IClaimsService _claimsService;
         private readonly ICurrentTime _currentTime;
         private readonly IShippingFeeService _shippingFeeService;
+        private readonly IVoucherService _voucherService;
         private readonly IPaymentService _paymentService;
         private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
@@ -26,6 +27,7 @@ namespace LuminaBox.Application.Services
             IClaimsService claimsService,
             ICurrentTime currentTime,
             IShippingFeeService shippingFeeService,
+            IVoucherService voucherService,
             IPaymentService paymentService,
             IWalletService walletService,
             INotificationService notificationService)
@@ -34,6 +36,7 @@ namespace LuminaBox.Application.Services
             _claimsService = claimsService;
             _currentTime = currentTime;
             _shippingFeeService = shippingFeeService;
+            _voucherService = voucherService;
             _paymentService = paymentService;
             _walletService = walletService;
             _notificationService = notificationService;
@@ -42,95 +45,91 @@ namespace LuminaBox.Application.Services
         public async Task<List<OrderResponse>> CreateOrderAsync(CreateOrderRequest request)
         {
             var userId = _claimsService.GetRequiredUserId();
-            var addressId = request.AddressId ?? request.ShippingAddressId;
 
             return await CreateOrdersInternalAsync(
-                userId,
-                addressId,
-                request.FulfillmentType,
-                request.PaymentMethod,
-                request.ReceiverName,
-                request.ReceiverPhone,
-                request.Note,
-                request.Items,
-                request.VoucherIds,
-                cartItemsToRemove: null);
+                userId: userId,
+                fulfillmentType: request.FulfillmentType,
+                paymentMethod: request.PaymentMethod,
+                note: request.Note,
+                requestedItems: request.Items,
+                requestedVoucherIds: request.VoucherIds,
+                cartItemsToRemove: null,
+                cartSnapshotPrices: null);
         }
 
         public async Task<List<OrderResponse>> CreateOrderFromCartAsync(CreateOrderFromCartRequest request)
         {
             var userId = _claimsService.GetRequiredUserId();
-            var addressId = request.AddressId ?? request.ShippingAddressId;
+
+            var cart = await _unitOfWork.Carts.GetQueryable()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.UserId == userId)
+                ?? throw ErrorHelper.NotFound("Cart not found.");
 
             var distinctCartItemIds = request.CartItemIds.Distinct().ToList();
 
             var cartItems = await _unitOfWork.CartItems.GetQueryable()
-                .Include(ci => ci.Cart)
-                .Where(ci => ci.Cart.UserId == userId && distinctCartItemIds.Contains(ci.Id))
+                .Include(ci => ci.ProductItem)
+                .Where(ci => ci.CartId == cart.Id && distinctCartItemIds.Contains(ci.Id))
                 .ToListAsync();
 
             if (cartItems.Count != distinctCartItemIds.Count)
-                throw ErrorHelper.NotFound("One or more cart items were not found in your cart.");
+                throw ErrorHelper.BadRequest("One or more selected cart items were not found in your cart.");
 
-            var boxSelectionLookup = (request.BoxItems ?? new List<CartBoxItemSelectionRequest>())
+            var boxSelectionMap = (request.BoxItems ?? new List<OrderFromCartBoxSelectionRequest>())
                 .GroupBy(b => b.CartItemId)
                 .ToDictionary(g => g.Key, g => g.First().Selections);
 
-            var orderItems = new List<CreateOrderItemRequest>();
+            var requestedItems = new List<CreateOrderItemRequest>();
             var cartSnapshotPrices = new Dictionary<int, decimal>();
 
             for (var idx = 0; idx < cartItems.Count; idx++)
             {
-                var cartItem = cartItems[idx];
-                if (cartItem.UnitPrice > 0)
-                {
-                    cartSnapshotPrices[idx] = cartItem.UnitPrice;
-                }
+                var ci = cartItems[idx];
 
-                if (cartItem.ItemType == OrderItemType.Product)
+                if (ci.ItemType == OrderItemType.Product)
                 {
-                    if (!cartItem.ProductItemId.HasValue)
-                        throw ErrorHelper.BadRequest("Product cart item is missing ProductItemId.");
+                    var pi = ci.ProductItem
+                        ?? await _unitOfWork.ProductItems.GetByIdAsync(ci.ProductItemId!.Value)
+                        ?? throw ErrorHelper.NotFound("Product item in cart no longer exists.");
 
-                    orderItems.Add(new CreateOrderItemRequest
+                    requestedItems.Add(new CreateOrderItemRequest
                     {
                         ItemType = OrderItemType.Product,
-                        ProductItemId = cartItem.ProductItemId,
-                        Quantity = cartItem.Quantity,
-                        StallId = cartItem.StallId
+                        ProductId = pi.ProductId,
+                        CategoryId = pi.CategoryId,
+                        FillingId = pi.FillingId,
+                        Quantity = ci.Quantity,
+                        StallId = ci.StallId
                     });
+                    cartSnapshotPrices[idx] = ci.UnitPrice;
                 }
                 else
                 {
-                    if (!cartItem.BoxItemId.HasValue)
-                        throw ErrorHelper.BadRequest("Box cart item is missing BoxItemId.");
+                    if (!boxSelectionMap.TryGetValue(ci.Id, out var selections) || selections.Count == 0)
+                        throw ErrorHelper.BadRequest($"Box selections are required for cart item '{ci.Id}'.");
 
-                    if (!boxSelectionLookup.TryGetValue(cartItem.Id, out var selections) || selections.Count == 0)
-                        throw ErrorHelper.BadRequest($"Selections are required for box cart item '{cartItem.Id}'.");
-
-                    orderItems.Add(new CreateOrderItemRequest
+                    requestedItems.Add(new CreateOrderItemRequest
                     {
                         ItemType = OrderItemType.Box,
-                        BoxItemId = cartItem.BoxItemId,
-                        Quantity = cartItem.Quantity,
-                        StallId = cartItem.StallId,
+                        BoxItemId = ci.BoxItemId,
+                        Quantity = ci.Quantity,
+                        StallId = ci.StallId,
                         Selections = selections
                     });
+                    cartSnapshotPrices[idx] = ci.UnitPrice;
                 }
             }
 
             return await CreateOrdersInternalAsync(
-                userId,
-                addressId,
-                request.FulfillmentType,
-                request.PaymentMethod,
-                request.ReceiverName,
-                request.ReceiverPhone,
-                request.Note,
-                orderItems,
-                request.VoucherIds,
-                cartItems,
-                cartSnapshotPrices);
+                userId: userId,
+                fulfillmentType: request.FulfillmentType,
+                paymentMethod: request.PaymentMethod,
+                note: request.Note,
+                requestedItems: requestedItems,
+                requestedVoucherIds: request.VoucherIds,
+                cartItemsToRemove: cartItems,
+                cartSnapshotPrices: cartSnapshotPrices);
         }
 
         public async Task<Pagination<OrderSummaryResponse>> GetMyOrdersAsync(
@@ -144,20 +143,10 @@ namespace LuminaBox.Application.Services
             DateTime? toDate = null)
         {
             var userId = _claimsService.GetRequiredUserId();
-            var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
 
             var query = _unitOfWork.Orders.GetQueryable()
                 .AsNoTracking()
                 .Where(o => o.UserId == userId);
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var keyword = search.Trim().ToLower();
-                query = query.Where(o =>
-                    o.OrderCode.ToLower().Contains(keyword) ||
-                    o.Organizer.BrandName.ToLower().Contains(keyword) ||
-                    o.ReceiverName.ToLower().Contains(keyword));
-            }
 
             if (status.HasValue)
                 query = query.Where(o => o.Status == status.Value);
@@ -168,9 +157,18 @@ namespace LuminaBox.Application.Services
             if (toDate.HasValue)
                 query = query.Where(o => o.CreatedAt <= toDate.Value);
 
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var keyword = search.Trim().ToLower();
+                query = query.Where(o =>
+                    o.OrderCode.ToLower().Contains(keyword) ||
+                    o.Organizer.BrandName.ToLower().Contains(keyword) ||
+                    o.ReceiverName.ToLower().Contains(keyword));
+            }
+
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.Trim().ToLowerInvariant() switch
+            query = sortBy?.ToLower() switch
             {
                 "ordercode" => isDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
                 "totalamount" => isDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
@@ -179,8 +177,8 @@ namespace LuminaBox.Application.Services
             };
 
             var items = await query
-                .Skip((pagination.PageIndex - 1) * pagination.PageSize)
-                .Take(pagination.PageSize)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(o => new OrderSummaryResponse
                 {
                     Id = o.Id,
@@ -200,7 +198,7 @@ namespace LuminaBox.Application.Services
                     OrganizerDiscount = o.OrganizerDiscount,
                     ShippingFee = o.ShippingFee,
                     TotalAmount = o.TotalAmount,
-                    ItemCount = o.Items.Count,
+                    ItemCount = o.Items.Sum(i => i.Quantity),
                     Status = o.Status,
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
                     PaymentStatus = o.Payment != null ? o.Payment.Status : null,
@@ -209,7 +207,7 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<OrderSummaryResponse>(items, totalCount, pagination.PageIndex, pagination.PageSize);
+            return new Pagination<OrderSummaryResponse>(items, totalCount, page, pageSize);
         }
 
         public async Task<Pagination<OrderSummaryResponse>> GetMyOrganizerOrdersAsync(
@@ -224,25 +222,15 @@ namespace LuminaBox.Application.Services
             DateTime? toDate = null)
         {
             var userId = _claimsService.GetRequiredUserId();
+
             var organizer = await _unitOfWork.Organizers.GetQueryable()
                 .AsNoTracking()
-                .FirstOrDefaultAsync(org => org.UserId == userId)
-                ?? throw ErrorHelper.NotFound("Organizer profile not found.");
-
-            var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
+                .FirstOrDefaultAsync(o => o.UserId == userId)
+                ?? throw ErrorHelper.Forbidden("Organizer profile not found.");
 
             var query = _unitOfWork.Orders.GetQueryable()
                 .AsNoTracking()
                 .Where(o => o.OrganizerId == organizer.Id);
-
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                var keyword = search.Trim().ToLower();
-                query = query.Where(o =>
-                    o.OrderCode.ToLower().Contains(keyword) ||
-                    o.ReceiverName.ToLower().Contains(keyword) ||
-                    o.ReceiverPhone.Contains(keyword));
-            }
 
             if (status.HasValue)
                 query = query.Where(o => o.Status == status.Value);
@@ -256,9 +244,18 @@ namespace LuminaBox.Application.Services
             if (toDate.HasValue)
                 query = query.Where(o => o.CreatedAt <= toDate.Value);
 
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var keyword = search.Trim().ToLower();
+                query = query.Where(o =>
+                    o.OrderCode.ToLower().Contains(keyword) ||
+                    o.ReceiverName.ToLower().Contains(keyword) ||
+                    o.ReceiverPhone.ToLower().Contains(keyword));
+            }
+
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.Trim().ToLowerInvariant() switch
+            query = sortBy?.ToLower() switch
             {
                 "ordercode" => isDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
                 "totalamount" => isDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
@@ -267,8 +264,8 @@ namespace LuminaBox.Application.Services
             };
 
             var items = await query
-                .Skip((pagination.PageIndex - 1) * pagination.PageSize)
-                .Take(pagination.PageSize)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(o => new OrderSummaryResponse
                 {
                     Id = o.Id,
@@ -288,7 +285,7 @@ namespace LuminaBox.Application.Services
                     OrganizerDiscount = o.OrganizerDiscount,
                     ShippingFee = o.ShippingFee,
                     TotalAmount = o.TotalAmount,
-                    ItemCount = o.Items.Count,
+                    ItemCount = o.Items.Sum(i => i.Quantity),
                     Status = o.Status,
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
                     PaymentStatus = o.Payment != null ? o.Payment.Status : null,
@@ -297,7 +294,7 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<OrderSummaryResponse>(items, totalCount, pagination.PageIndex, pagination.PageSize);
+            return new Pagination<OrderSummaryResponse>(items, totalCount, page, pageSize);
         }
 
         public async Task<OrderResponse> GetOrderByDetail(Guid id)
@@ -341,21 +338,19 @@ namespace LuminaBox.Application.Services
                         DeliveredAt = o.DeliveredAt,
                         CancelledAt = o.CancelledAt,
                         CancelReason = o.CancelReason,
-                        Payment = o.Payment != null
-                            ? new OrderPaymentSummaryResponse
-                            {
-                                Id = o.Payment.Id,
-                                Code = o.Payment.Code,
-                                Amount = o.Payment.Amount,
-                                Currency = o.Payment.Currency,
-                                Method = o.Payment.Method,
-                                Status = o.Payment.Status,
-                                CheckoutSessionId = o.Payment.CheckoutSessionId,
-                                TransactionId = o.Payment.TransactionId,
-                                PaidAt = o.Payment.PaidAt,
-                                RefundedAt = o.Payment.RefundedAt
-                            }
-                            : null,
+                        Payment = o.Payment == null ? null : new OrderPaymentSummaryResponse
+                        {
+                            Id = o.Payment.Id,
+                            Code = o.Payment.Code,
+                            Amount = o.Payment.Amount,
+                            Currency = o.Payment.Currency,
+                            Method = o.Payment.Method,
+                            Status = o.Payment.Status,
+                            CheckoutSessionId = o.Payment.CheckoutSessionId,
+                            TransactionId = o.Payment.TransactionId,
+                            PaidAt = o.Payment.PaidAt,
+                            RefundedAt = o.Payment.RefundedAt
+                        },
                         Items = o.Items.Select(i => new OrderItemResponse
                         {
                             Id = i.Id,
@@ -521,7 +516,7 @@ namespace LuminaBox.Application.Services
 
                 if (!isPaidStripe)
                 {
-                    await RestoreOrderVouchersAsync(order, now);
+                    await _voucherService.RestoreOrderVouchersAsync(order, now);
                 }
 
                 await RestoreBoxStockAsync(order);
@@ -615,7 +610,7 @@ namespace LuminaBox.Application.Services
 
                 if (!isPaidStripe)
                 {
-                    await RestoreOrderVouchersAsync(order, now);
+                    await _voucherService.RestoreOrderVouchersAsync(order, now);
                 }
 
                 await RestoreBoxStockAsync(order);
@@ -662,20 +657,24 @@ namespace LuminaBox.Application.Services
             if (order.Status != OrderStatus.Confirmed)
                 throw ErrorHelper.Conflict("Only confirmed orders can be marked as delivering.");
 
-            var previousStatus = order.Status;
-            order.Status = OrderStatus.Delivering;
-            await _unitOfWork.Orders.Update(order);
-
-            await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
+            await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                OrderId = order.Id,
-                FromStatus = previousStatus,
-                ToStatus = OrderStatus.Delivering,
-                ChangedBy = userId,
-                ChangedAt = now
-            });
+                var previousStatus = order.Status;
+                order.Status = OrderStatus.Delivering;
+                await _unitOfWork.Orders.Update(order);
 
-            await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
+                {
+                    OrderId = order.Id,
+                    FromStatus = previousStatus,
+                    ToStatus = OrderStatus.Delivering,
+                    ChangedBy = userId,
+                    ChangedAt = now
+                });
+
+                await _unitOfWork.SaveChangesAsync();
+                return true;
+            });
 
             await _notificationService.SendAsync(
                 NotificationCatalog.OrderDelivering(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
@@ -690,41 +689,37 @@ namespace LuminaBox.Application.Services
 
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
-                .Include(o => o.Payment)
                 .FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw ErrorHelper.NotFound("Order not found.");
 
             if (order.Organizer.UserId != userId)
                 throw ErrorHelper.Forbidden("You do not own this order.");
 
-            var canDeliverFromConfirmed = order.FulfillmentType == FulfillmentType.Pickup && order.Status == OrderStatus.Confirmed;
-            if (order.Status != OrderStatus.Delivering && !canDeliverFromConfirmed)
-                throw ErrorHelper.Conflict("Only delivering (or confirmed pickup) orders can be marked as delivered.");
+            var canDeliverFromConfirmedPickup = order.FulfillmentType == FulfillmentType.Pickup &&
+                                                order.Status == OrderStatus.Confirmed;
 
-            var previousStatus = order.Status;
-            order.Status = OrderStatus.Delivered;
-            order.DeliveredAt = now;
-            await _unitOfWork.Orders.Update(order);
+            if (order.Status != OrderStatus.Delivering && !canDeliverFromConfirmedPickup)
+                throw ErrorHelper.Conflict("Order must be in Delivering status (or Confirmed for Pickup) to be marked as delivered.");
 
-            if (order.Payment is not null &&
-                order.Payment.Method == PaymentMethod.CashOnDelivery &&
-                order.Payment.Status == PaymentStatus.Pending)
+            await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
-                order.Payment.Status = PaymentStatus.Success;
-                order.Payment.PaidAt = now;
-                await _unitOfWork.Payments.Update(order.Payment);
-            }
+                var previousStatus = order.Status;
+                order.Status = OrderStatus.Delivered;
+                order.DeliveredAt = now;
+                await _unitOfWork.Orders.Update(order);
 
-            await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
-            {
-                OrderId = order.Id,
-                FromStatus = previousStatus,
-                ToStatus = OrderStatus.Delivered,
-                ChangedBy = userId,
-                ChangedAt = now
+                await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
+                {
+                    OrderId = order.Id,
+                    FromStatus = previousStatus,
+                    ToStatus = OrderStatus.Delivered,
+                    ChangedBy = userId,
+                    ChangedAt = now
+                });
+
+                await _unitOfWork.SaveChangesAsync();
+                return true;
             });
-
-            await _unitOfWork.SaveChangesAsync();
 
             await _notificationService.SendAsync(
                 NotificationCatalog.OrderDelivered(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
@@ -734,72 +729,55 @@ namespace LuminaBox.Application.Services
 
         private async Task<List<OrderResponse>> CreateOrdersInternalAsync(
             Guid userId,
-            Guid? addressId,
             FulfillmentType fulfillmentType,
             PaymentMethod paymentMethod,
-            string? requestReceiverName,
-            string? requestReceiverPhone,
             string? note,
             List<CreateOrderItemRequest> requestedItems,
             List<Guid>? requestedVoucherIds,
             List<CartItem>? cartItemsToRemove,
-            Dictionary<int, decimal>? cartSnapshotPrices = null)
+            Dictionary<int, decimal>? cartSnapshotPrices)
         {
             var now = _currentTime.GetCurrentTime();
+
+            var user = await _unitOfWork.Users.GetQueryable()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == userId)
+                ?? throw ErrorHelper.NotFound("User not found.");
 
             Address? buyerAddress = null;
             string receiverName;
             string receiverPhone;
             string? fullShippingAddressText = null;
 
+            var defaultShippingAddress = await _unitOfWork.Addresses.GetQueryable()
+                .AsNoTracking()
+                .Include(a => a.Ward)
+                    .ThenInclude(w => w.District)
+                        .ThenInclude(d => d.Province)
+                .FirstOrDefaultAsync(a => a.UserId == userId
+                                       && a.Type == AddressType.Shipping
+                                       && a.IsDefault);
+
             if (fulfillmentType == FulfillmentType.Delivery)
             {
-                if (!addressId.HasValue || addressId.Value == Guid.Empty)
-                    throw ErrorHelper.BadRequest("AddressId is required for Delivery orders.");
+                buyerAddress = defaultShippingAddress
+                    ?? throw ErrorHelper.BadRequest("Default shipping address not found. Please set a default shipping address before placing a delivery order.");
 
-                buyerAddress = await _unitOfWork.Addresses.GetQueryable()
-                    .AsNoTracking()
-                    .Include(a => a.Ward)
-                        .ThenInclude(w => w.District)
-                            .ThenInclude(d => d.Province)
-                    .FirstOrDefaultAsync(a => a.Id == addressId.Value && a.UserId == userId)
-                    ?? throw ErrorHelper.NotFound("Shipping address not found.");
-
-                if (buyerAddress.Type != AddressType.Shipping)
-                    throw ErrorHelper.BadRequest("Selected address must be a shipping address.");
-
-                receiverName = !string.IsNullOrWhiteSpace(requestReceiverName)
-                    ? requestReceiverName.Trim()
-                    : buyerAddress.ContactName;
-                receiverPhone = !string.IsNullOrWhiteSpace(requestReceiverPhone)
-                    ? requestReceiverPhone.Trim()
-                    : buyerAddress.Phone;
+                receiverName = buyerAddress.ContactName;
+                receiverPhone = buyerAddress.Phone;
                 fullShippingAddressText =
                     $"{buyerAddress.AddressLine}, {buyerAddress.Ward.Name}, {buyerAddress.Ward.District.Name}, {buyerAddress.Ward.District.Province.Name}";
             }
             else
             {
-                var buyerUser = await _unitOfWork.Users.GetQueryable()
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(u => u.Id == userId)
-                    ?? throw ErrorHelper.NotFound("User not found.");
+                receiverName = !string.IsNullOrWhiteSpace(user.FullName)
+                    ? user.FullName
+                    : defaultShippingAddress?.ContactName ?? "Customer";
 
-                if (addressId.HasValue && addressId.Value != Guid.Empty)
-                {
-                    buyerAddress = await _unitOfWork.Addresses.GetQueryable()
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(a => a.Id == addressId.Value && a.UserId == userId);
-                }
-
-                receiverName = !string.IsNullOrWhiteSpace(requestReceiverName)
-                    ? requestReceiverName.Trim()
-                    : (buyerAddress?.ContactName ?? buyerUser.FullName);
-                receiverPhone = !string.IsNullOrWhiteSpace(requestReceiverPhone)
-                    ? requestReceiverPhone.Trim()
-                    : (buyerAddress?.Phone ?? buyerUser.Phone ?? string.Empty);
-
-                if (string.IsNullOrWhiteSpace(receiverPhone))
-                    throw ErrorHelper.BadRequest("ReceiverPhone is required when user profile has no phone number.");
+                receiverPhone = !string.IsNullOrWhiteSpace(user.Phone)
+                    ? user.Phone
+                    : defaultShippingAddress?.Phone
+                      ?? throw ErrorHelper.BadRequest("Phone number is required on your profile or default address for pickup orders.");
             }
 
             var preparedLines = new List<PreparedOrderLine>();
@@ -817,10 +795,9 @@ namespace LuminaBox.Application.Services
                 if (reqItem.ItemType == OrderItemType.Product)
                 {
                     var productItem = await ResolveProductItemAsync(
-                        reqItem.ProductItemId,
-                        reqItem.ProductId,
-                        reqItem.CategoryId,
-                        reqItem.FillingId);
+                        reqItem.ProductId!.Value,
+                        reqItem.CategoryId!.Value,
+                        reqItem.FillingId!.Value);
 
                     var product = productItem.Product;
 
@@ -908,7 +885,6 @@ namespace LuminaBox.Application.Services
                     foreach (var sel in selections)
                     {
                         var selProductItem = await ResolveProductItemAsync(
-                            sel.ProductItemId,
                             sel.ProductId,
                             sel.CategoryId,
                             sel.FillingId);
@@ -996,101 +972,23 @@ namespace LuminaBox.Application.Services
             if (paymentMethod == PaymentMethod.Stripe && groups.Count > 1)
                 throw ErrorHelper.Conflict("Stripe payment only supports checking out a single organizer and stall group per checkout.");
 
-            var claimedUserVouchers = new List<UserVoucher>();
-            if (requestedVoucherIds is not null && requestedVoucherIds.Count > 0)
-            {
-                var distinctReqVoucherIds = requestedVoucherIds.Distinct().ToList();
-                claimedUserVouchers = await _unitOfWork.UserVouchers.GetQueryable()
-                    .Include(uv => uv.Voucher)
-                    .Where(uv => uv.UserId == userId &&
-                                 (distinctReqVoucherIds.Contains(uv.Id) || distinctReqVoucherIds.Contains(uv.VoucherId)))
-                    .ToListAsync();
-
-                if (claimedUserVouchers.Count != distinctReqVoucherIds.Count)
-                    throw ErrorHelper.BadRequest("One or more selected vouchers were not found in your claimed voucher wallet.");
-
-                foreach (var uv in claimedUserVouchers)
-                {
-                    var v = uv.Voucher;
-                    if (v.Status != VoucherStatus.Active)
-                        throw ErrorHelper.BadRequest($"Voucher '{v.Code}' is not active.");
-
-                    if (now < v.StartAt || now > v.EndAt)
-                        throw ErrorHelper.BadRequest($"Voucher '{v.Code}' is outside its valid date range.");
-
-                    if (v.UsageLimit.HasValue && v.UsedCount >= v.UsageLimit.Value)
-                        throw ErrorHelper.BadRequest($"Voucher '{v.Code}' has reached its usage limit.");
-
-                    var userUsedCount = await _unitOfWork.VoucherUsages.GetQueryable()
-                        .CountAsync(vu => vu.VoucherId == v.Id && vu.UserId == userId);
-
-                    if (userUsedCount >= v.UsageLimitPerUser)
-                        throw ErrorHelper.BadRequest($"You have reached the usage limit for voucher '{v.Code}'.");
-                }
-            }
-
-            var platformUserVouchers = claimedUserVouchers
-                .Where(uv => uv.Voucher.Scope == VoucherScope.Platform)
+            var groupInputs = groups
+                .Select((g, idx) => (GroupIndex: idx, g.Key.OrganizerId, Subtotal: g.Sum(l => l.Subtotal)))
                 .ToList();
 
-            if (platformUserVouchers.Count > 1)
-                throw ErrorHelper.BadRequest("Only one platform voucher can be applied per order.");
-
-            var organizerUserVouchers = claimedUserVouchers
-                .Where(uv => uv.Voucher.Scope == VoucherScope.Organizer)
-                .ToList();
-
-            if (organizerUserVouchers.GroupBy(uv => uv.Voucher.OrganizerId).Any(g => g.Count() > 1))
-                throw ErrorHelper.BadRequest("Only one organizer voucher can be applied per organizer.");
+            var voucherPlans = await _voucherService.ValidateAndCalculateOrderVouchersAsync(
+                userId,
+                requestedVoucherIds,
+                groupInputs,
+                now);
 
             var groupPlans = new List<PreparedOrderGroupPlan>();
-            var platformVoucherConsumed = false;
 
-            foreach (var group in groups)
+            for (var idx = 0; idx < groups.Count; idx++)
             {
+                var group = groups[idx];
                 var subtotal = group.Sum(l => l.Subtotal);
-
-                decimal organizerDiscount = 0m;
-                UserVoucher? appliedOrganizerUv = organizerUserVouchers
-                    .FirstOrDefault(uv => uv.Voucher.OrganizerId == group.Key.OrganizerId);
-
-                if (appliedOrganizerUv is not null)
-                {
-                    var ov = appliedOrganizerUv.Voucher;
-                    if (subtotal < ov.MinOrderAmount)
-                        throw ErrorHelper.BadRequest($"Order subtotal does not meet minimum amount for voucher '{ov.Code}'.");
-
-                    organizerDiscount = ov.DiscountType == DiscountType.Percent
-                        ? Math.Round(subtotal * ov.DiscountValue / 100m, 0, MidpointRounding.AwayFromZero)
-                        : ov.DiscountValue;
-
-                    if (ov.DiscountType == DiscountType.Percent && ov.MaxDiscountAmount.HasValue)
-                        organizerDiscount = Math.Min(organizerDiscount, ov.MaxDiscountAmount.Value);
-
-                    organizerDiscount = Math.Min(subtotal, organizerDiscount);
-                }
-
-                decimal platformDiscount = 0m;
-                UserVoucher? appliedPlatformUv = null;
-
-                if (!platformVoucherConsumed && platformUserVouchers.Count == 1)
-                {
-                    var pv = platformUserVouchers[0].Voucher;
-                    if (subtotal < pv.MinOrderAmount)
-                        throw ErrorHelper.BadRequest($"Order subtotal does not meet minimum amount for platform voucher '{pv.Code}'.");
-
-                    var remainingAfterOrganizer = Math.Max(0m, subtotal - organizerDiscount);
-                    platformDiscount = pv.DiscountType == DiscountType.Percent
-                        ? Math.Round(remainingAfterOrganizer * pv.DiscountValue / 100m, 0, MidpointRounding.AwayFromZero)
-                        : pv.DiscountValue;
-
-                    if (pv.DiscountType == DiscountType.Percent && pv.MaxDiscountAmount.HasValue)
-                        platformDiscount = Math.Min(platformDiscount, pv.MaxDiscountAmount.Value);
-
-                    platformDiscount = Math.Min(remainingAfterOrganizer, platformDiscount);
-                    appliedPlatformUv = platformUserVouchers[0];
-                    platformVoucherConsumed = true;
-                }
+                var voucherPlan = voucherPlans[idx];
 
                 decimal shippingFee = 0m;
                 Guid? pickupAddressId = null;
@@ -1131,7 +1029,7 @@ namespace LuminaBox.Application.Services
                     pickupAddressId = feeEstimate.PickupAddressId;
                 }
 
-                var merchandiseAfterDiscount = Math.Max(0m, subtotal - organizerDiscount - platformDiscount);
+                var merchandiseAfterDiscount = Math.Max(0m, subtotal - voucherPlan.OrganizerDiscount - voucherPlan.PlatformDiscount);
                 var totalAmount = merchandiseAfterDiscount + shippingFee;
 
                 groupPlans.Add(new PreparedOrderGroupPlan
@@ -1142,23 +1040,14 @@ namespace LuminaBox.Application.Services
                     StallId = group.Key.StallId,
                     PickupAddressId = pickupAddressId,
                     SubtotalAmount = subtotal,
-                    OrganizerDiscount = organizerDiscount,
-                    PlatformDiscount = platformDiscount,
+                    OrganizerDiscount = voucherPlan.OrganizerDiscount,
+                    PlatformDiscount = voucherPlan.PlatformDiscount,
                     ShippingFee = shippingFee,
                     TotalAmount = totalAmount,
-                    AppliedOrganizerUserVoucher = appliedOrganizerUv,
-                    AppliedPlatformUserVoucher = appliedPlatformUv,
+                    AppliedOrganizerUserVoucher = voucherPlan.AppliedOrganizerUserVoucher,
+                    AppliedPlatformUserVoucher = voucherPlan.AppliedPlatformUserVoucher,
                     Lines = group.ToList()
                 });
-            }
-
-            foreach (var orgUv in organizerUserVouchers)
-            {
-                if (!groupPlans.Any(gp => gp.AppliedOrganizerUserVoucher?.Id == orgUv.Id))
-                {
-                    throw ErrorHelper.BadRequest(
-                        $"Organizer voucher '{orgUv.Voucher.Code}' does not match any organizer in this order.");
-                }
             }
 
             var createdOrderIds = new List<Guid>();
@@ -1277,12 +1166,22 @@ namespace LuminaBox.Application.Services
 
                     if (plan.AppliedOrganizerUserVoucher is not null)
                     {
-                        await ConsumeVoucherAsync(plan.AppliedOrganizerUserVoucher, order.Id, userId, plan.OrganizerDiscount, now);
+                        await _voucherService.ConsumeVoucherAsync(
+                            plan.AppliedOrganizerUserVoucher,
+                            order.Id,
+                            userId,
+                            plan.OrganizerDiscount,
+                            now);
                     }
 
                     if (plan.AppliedPlatformUserVoucher is not null)
                     {
-                        await ConsumeVoucherAsync(plan.AppliedPlatformUserVoucher, order.Id, userId, plan.PlatformDiscount, now);
+                        await _voucherService.ConsumeVoucherAsync(
+                            plan.AppliedPlatformUserVoucher,
+                            order.Id,
+                            userId,
+                            plan.PlatformDiscount,
+                            now);
                     }
 
                     createdOrderIds.Add(order.Id);
@@ -1314,34 +1213,21 @@ namespace LuminaBox.Application.Services
         }
 
         private async Task<ProductItem> ResolveProductItemAsync(
-            Guid? productItemId,
-            Guid? productId,
-            Guid? categoryId,
-            Guid? fillingId)
+            Guid productId,
+            Guid categoryId,
+            Guid fillingId)
         {
-            var query = _unitOfWork.ProductItems.GetQueryable()
+            return await _unitOfWork.ProductItems.GetQueryable()
                 .Include(pi => pi.Product)
                     .ThenInclude(p => p.Organizer)
                 .Include(pi => pi.PriceTiers)
-                .Include(pi => pi.Stocks);
-
-            if (productItemId.HasValue && productItemId.Value != Guid.Empty)
-            {
-                return await query.FirstOrDefaultAsync(pi => pi.Id == productItemId.Value)
-                    ?? throw ErrorHelper.NotFound($"Product item '{productItemId}' not found.");
-            }
-
-            if (productId.HasValue && categoryId.HasValue && fillingId.HasValue)
-            {
-                return await query
-                    .OrderBy(pi => pi.CreatedAt)
-                    .FirstOrDefaultAsync(pi => pi.ProductId == productId.Value
-                                            && pi.CategoryId == categoryId.Value
-                                            && pi.FillingId == fillingId.Value)
-                    ?? throw ErrorHelper.NotFound($"Product item not found for product '{productId}'.");
-            }
-
-            throw ErrorHelper.BadRequest("ProductItemId is required.");
+                .Include(pi => pi.Stocks)
+                .OrderBy(pi => pi.CreatedAt)
+                .FirstOrDefaultAsync(pi => pi.ProductId == productId
+                                        && pi.CategoryId == categoryId
+                                        && pi.FillingId == fillingId)
+                ?? throw ErrorHelper.NotFound(
+                    $"Selected category and filling combination is not available for product '{productId}'.");
         }
 
         private async Task EnsureOnlineApprovedAsync(Guid organizerId, string brandName)
@@ -1432,59 +1318,6 @@ namespace LuminaBox.Application.Services
                     stockRow.StockQuantity += boxCount.Quantity;
                     await _unitOfWork.StallBoxItems.Update(stockRow);
                 }
-            }
-        }
-
-        private async Task ConsumeVoucherAsync(
-            UserVoucher userVoucher,
-            Guid orderId,
-            Guid userId,
-            decimal discountAmount,
-            DateTime now)
-        {
-            var voucher = userVoucher.Voucher;
-            voucher.UsedCount += 1;
-            await _unitOfWork.Vouchers.Update(voucher);
-            await _unitOfWork.UserVouchers.SoftRemove(userVoucher);
-
-            await _unitOfWork.VoucherUsages.AddAsync(new VoucherUsage
-            {
-                VoucherId = voucher.Id,
-                UserId = userId,
-                OrderId = orderId,
-                DiscountAmount = discountAmount,
-                UsedAt = now
-            });
-        }
-
-        private async Task RestoreOrderVouchersAsync(Order order, DateTime now)
-        {
-            if (order.VoucherUsages.Count == 0)
-                return;
-
-            foreach (var usage in order.VoucherUsages.ToList())
-            {
-                var voucher = usage.Voucher;
-                if (voucher.UsedCount > 0)
-                {
-                    voucher.UsedCount -= 1;
-                    await _unitOfWork.Vouchers.Update(voucher);
-                }
-
-                var alreadyHasActiveClaim = await _unitOfWork.UserVouchers.GetQueryable()
-                    .AnyAsync(uv => uv.UserId == order.UserId && uv.VoucherId == usage.VoucherId);
-
-                if (!alreadyHasActiveClaim)
-                {
-                    await _unitOfWork.UserVouchers.AddAsync(new UserVoucher
-                    {
-                        UserId = order.UserId,
-                        VoucherId = usage.VoucherId,
-                        ClaimedAt = now
-                    });
-                }
-
-                await _unitOfWork.VoucherUsages.SoftRemove(usage);
             }
         }
 

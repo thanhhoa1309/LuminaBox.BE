@@ -1,10 +1,13 @@
 @LuminaBox.Api_HostAddress = http://localhost:5155
 @accessToken = 
 @refreshToken = 
-@productItemId = 00000000-0000-0000-0000-000000000000
+@productId = 00000000-0000-0000-0000-000000000000
+@categoryId = 00000000-0000-0000-0000-000000000000
+@fillingId = 00000000-0000-0000-0000-000000000000
 @boxItemId = 00000000-0000-0000-0000-000000000000
 @cartItemId = 00000000-0000-0000-0000-000000000000
-@addressId = 00000000-0000-0000-0000-000000000000
+@voucherId = 00000000-0000-0000-0000-000000000000
+@userVoucherId = 00000000-0000-0000-0000-000000000000
 @orderId = 00000000-0000-0000-0000-000000000000
 @paymentId = 00000000-0000-0000-0000-000000000000
 
@@ -58,17 +61,62 @@ Content-Type: application/json
 POST {{LuminaBox.Api_HostAddress}}/api/auth/logout
 Authorization: Bearer {{accessToken}}
 
-### Login validation error
-POST {{LuminaBox.Api_HostAddress}}/api/auth/register
+### ============================================================================
+### VOUCHER ENDPOINTS
+### ============================================================================
+
+### Create platform voucher (Manager)
+POST {{LuminaBox.Api_HostAddress}}/api/vouchers/platform
+Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "fullName": "",
-  "email": "bad",
-  "password": "short",
-  "confirmPassword": "mismatch",
-  "phone": "123"
+  "code": "MIDAUTUMN20",
+  "name": "Giảm 20K toàn sàn",
+  "description": "Áp dụng đơn từ 150.000đ",
+  "discountType": "Fixed",
+  "discountValue": 20000,
+  "minOrderAmount": 150000,
+  "usageLimit": 100,
+  "usageLimitPerUser": 1,
+  "startAt": "2026-11-01T00:00:00Z",
+  "endAt": "2026-12-31T23:59:59Z"
 }
+
+### Create organizer voucher (Organization)
+POST {{LuminaBox.Api_HostAddress}}/api/vouchers/organizer
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "code": "SHOP10",
+  "name": "Giảm 10% tại shop",
+  "description": "Tối đa 50.000đ cho đơn từ 200.000đ",
+  "discountType": "Percent",
+  "discountValue": 10,
+  "maxDiscountAmount": 50000,
+  "minOrderAmount": 200000,
+  "usageLimit": 50,
+  "usageLimitPerUser": 1,
+  "startAt": "2026-11-01T00:00:00Z",
+  "endAt": "2026-12-31T23:59:59Z"
+}
+
+### Get available vouchers to claim (User)
+GET {{LuminaBox.Api_HostAddress}}/api/vouchers/available
+Authorization: Bearer {{accessToken}}
+
+### Claim voucher into wallet (User)
+POST {{LuminaBox.Api_HostAddress}}/api/vouchers/{{voucherId}}/claim
+Authorization: Bearer {{accessToken}}
+
+### Get my claimed vouchers (User)
+GET {{LuminaBox.Api_HostAddress}}/api/vouchers/my
+Authorization: Bearer {{accessToken}}
+
+### Remove claimed voucher from wallet (User)
+DELETE {{LuminaBox.Api_HostAddress}}/api/vouchers/my/{{userVoucherId}}
+Authorization: Bearer {{accessToken}}
 
 ### ============================================================================
 ### CART ENDPOINTS
@@ -78,13 +126,15 @@ Content-Type: application/json
 GET {{LuminaBox.Api_HostAddress}}/api/carts/me
 Authorization: Bearer {{accessToken}}
 
-### Add product item to cart
+### Add product to cart (by ProductId + CategoryId + FillingId)
 POST {{LuminaBox.Api_HostAddress}}/api/carts/items/product
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "productItemId": "{{productItemId}}",
+  "productId": "{{productId}}",
+  "categoryId": "{{categoryId}}",
+  "fillingId": "{{fillingId}}",
   "quantity": 2
 }
 
@@ -104,7 +154,9 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "quantity": 3
+  "quantity": 3,
+  "categoryId": "{{categoryId}}",
+  "fillingId": "{{fillingId}}"
 }
 
 ### Remove cart item
@@ -115,34 +167,40 @@ Authorization: Bearer {{accessToken}}
 ### ORDER ENDPOINTS
 ### ============================================================================
 
-### Create order directly
+### Create order directly (auto-maps buyer default shipping address)
 POST {{LuminaBox.Api_HostAddress}}/api/orders
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "addressId": "{{addressId}}",
   "fulfillmentType": "Delivery",
   "paymentMethod": "Stripe",
   "note": "Giao giờ hành chính",
+  "voucherIds": [
+    "{{voucherId}}"
+  ],
   "items": [
     {
       "itemType": "Product",
-      "productItemId": "{{productItemId}}",
+      "productId": "{{productId}}",
+      "categoryId": "{{categoryId}}",
+      "fillingId": "{{fillingId}}",
       "quantity": 2
     }
   ]
 }
 
-### Create order from cart
+### Create order from cart (auto-maps buyer default shipping address)
 POST {{LuminaBox.Api_HostAddress}}/api/orders/from-cart
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "addressId": "{{addressId}}",
   "fulfillmentType": "Delivery",
   "paymentMethod": "CashOnDelivery",
+  "voucherIds": [
+    "{{voucherId}}"
+  ],
   "cartItemIds": [
     "{{cartItemId}}"
   ]
@@ -161,19 +219,19 @@ GET {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}
 Authorization: Bearer {{accessToken}}
 
 ### Confirm order (Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/confirm
+PUT {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/confirm
 Authorization: Bearer {{accessToken}}
 
 ### Ship order (Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/ship
+PUT {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/ship
 Authorization: Bearer {{accessToken}}
 
 ### Mark order delivered (Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/mark-delivered
+PUT {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/mark-delivered
 Authorization: Bearer {{accessToken}}
 
 ### Reject order (Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/reject
+PUT {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/reject
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
@@ -182,35 +240,10 @@ Content-Type: application/json
 }
 
 ### Cancel order (Buyer or Organizer)
-POST {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/cancel
+PUT {{LuminaBox.Api_HostAddress}}/api/orders/{{orderId}}/cancel
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
   "reason": "Đổi ý muốn chọn nhân khác"
 }
-
-### ============================================================================
-### PAYMENT ENDPOINTS
-### ============================================================================
-
-### Create Stripe Checkout Session
-POST {{LuminaBox.Api_HostAddress}}/api/payments/checkout
-Authorization: Bearer {{accessToken}}
-Content-Type: application/json
-
-{
-  "orderId": "{{orderId}}"
-}
-
-### Get payment details
-GET {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}
-Authorization: Bearer {{accessToken}}
-
-### Sync Stripe payment status
-POST {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}/sync
-Authorization: Bearer {{accessToken}}
-
-### Cancel pending payment
-PATCH {{LuminaBox.Api_HostAddress}}/api/payments/{{paymentId}}/cancel
-Authorization: Bearer {{accessToken}}

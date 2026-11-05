@@ -39,8 +39,6 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IClaimsService, ClaimsService>();
             services.AddScoped<IEmailService, LogEmailService>();
 
-            services.AddHostedService<UnpaidPaymentExpireWorker>();
-
             services.SetupStripe(configuration);
             services.SetupGeography(configuration);
             services.SetupRealtime();
@@ -102,6 +100,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IBoxItemService, BoxItemService>();
             services.AddScoped<IShippingFeeService, ShippingFeeService>();
             services.AddScoped<IGhnClient, GhnClient>();
+            services.AddScoped<IVoucherService, VoucherService>();
             services.AddScoped<ICartService, CartService>();
             services.AddScoped<IOrderService, OrderService>();
             services.AddScoped<IPaymentService, PaymentService>();
