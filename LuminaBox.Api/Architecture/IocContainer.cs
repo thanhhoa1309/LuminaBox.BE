@@ -87,6 +87,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<INotificationService, NotificationService>();
+            services.AddScoped<IOrganizerRegistrationService, OrganizerRegistrationService>();
             services.AddScoped<ILocationService, LocationService>();
             services.AddScoped<IAddressService, AddressService>();
             services.AddScoped<IGeoSyncService, GeoSyncService>();

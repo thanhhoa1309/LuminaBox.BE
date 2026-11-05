@@ -98,6 +98,19 @@
 
 **Chức năng:** Onboarding người bán (Flow 2–3); đổi `User.Role → Organization` khi đơn có hiệu lực.
 
+**Body chính**
+
+| Route | Body |
+|---|---|
+| `POST /` | `Type`, `BrandName`, `ContactPhone`, `BusinessInfo?`; Stall thêm `StallId`, `StartDate`, `EndDate` (`yyyy-MM-dd`) |
+| `POST /additional-stalls` | `StallIds[]` (1–10, không trùng), `StartDate`, `EndDate` |
+| `POST /additional-online` | Không có body; thông tin lấy từ hồ sơ Organizer |
+| `PUT /{id}/approve` | `CommissionRate` (Online, 0–100, tối đa 2 số lẻ); Stall gửi `{}` hoặc bỏ trống |
+| `PUT /{id}/reject` | `RejectReason` |
+| `PUT /{id}/cancel` | `CancelReason?` |
+
+**Lưu ý:** Sau khi được đổi role, FE gọi `POST api/auth/refresh-token` để nhận token mới. Đơn của người khác trả 404 ở `confirm` / `cancel`.
+
 ---
 
 ## 4. Hồ sơ Organizer & địa chỉ lấy hàng
