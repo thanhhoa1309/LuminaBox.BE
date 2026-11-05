@@ -16,7 +16,6 @@ namespace LuminaBox.Application.Dtos.Order
         public string? StallName { get; set; }
         public Guid? AddressId { get; set; }
         public Guid? PickupAddressId { get; set; }
-        public FulfillmentType FulfillmentType { get; set; }
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
         public string? ShippingAddress { get; set; }
@@ -36,69 +35,5 @@ namespace LuminaBox.Application.Dtos.Order
         public List<OrderItemResponse> Items { get; set; } = new();
         public List<OrderVoucherUsageResponse> VoucherUsages { get; set; } = new();
         public List<OrderStatusHistoryResponse> StatusHistories { get; set; } = new();
-    }
-
-    public class OrderPaymentSummaryResponse
-    {
-        public Guid Id { get; set; }
-        public string Code { get; set; } = string.Empty;
-        public decimal Amount { get; set; }
-        public string Currency { get; set; } = "VND";
-        public PaymentMethod Method { get; set; }
-        public PaymentStatus Status { get; set; }
-        public string? CheckoutSessionId { get; set; }
-        public string? TransactionId { get; set; }
-        public DateTime? PaidAt { get; set; }
-        public DateTime? RefundedAt { get; set; }
-    }
-
-    public class OrderItemResponse
-    {
-        public Guid Id { get; set; }
-        public OrderItemType ItemType { get; set; }
-        public Guid? ProductId { get; set; }
-        public string? ProductName { get; set; }
-        public Guid? BoxItemId { get; set; }
-        public string? BoxItemName { get; set; }
-        public Guid? CategoryId { get; set; }
-        public string? CategoryName { get; set; }
-        public Guid? FillingId { get; set; }
-        public string? FillingName { get; set; }
-        public int Quantity { get; set; }
-        public decimal UnitPrice { get; set; }
-        public decimal Subtotal { get; set; }
-        public bool HasFeedback { get; set; }
-        public List<OrderBoxSelectionResponse> BoxSelections { get; set; } = new();
-    }
-
-    public class OrderBoxSelectionResponse
-    {
-        public Guid Id { get; set; }
-        public Guid ProductId { get; set; }
-        public string ProductName { get; set; } = string.Empty;
-        public Guid CategoryId { get; set; }
-        public string CategoryName { get; set; } = string.Empty;
-        public Guid FillingId { get; set; }
-        public string FillingName { get; set; } = string.Empty;
-        public int Quantity { get; set; }
-    }
-
-    public class OrderVoucherUsageResponse
-    {
-        public Guid Id { get; set; }
-        public Guid VoucherId { get; set; }
-        public string VoucherCode { get; set; } = string.Empty;
-        public VoucherScope Scope { get; set; }
-        public decimal DiscountAmount { get; set; }
-        public DateTime UsedAt { get; set; }
-    }
-
-    public class OrderStatusHistoryResponse
-    {
-        public Guid Id { get; set; }
-        public OrderStatus? FromStatus { get; set; }
-        public OrderStatus ToStatus { get; set; }
-        public Guid? ChangedBy { get; set; }
-        public DateTime ChangedAt { get; set; }
     }
 }

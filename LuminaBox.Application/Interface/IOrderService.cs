@@ -29,6 +29,7 @@ namespace LuminaBox.Application.Interface
             DateTime? toDate = null);
         Task<OrderResponse> GetOrderByDetail(Guid id);
         Task<OrderResponse> ConfirmOrderAsync(Guid id);
+        Task<OrderResponse> UpdateOrderStatusAsync(Guid id, UpdateOrderStatusRequest request);
         Task<OrderResponse> RejectOrderAsync(Guid id, RejectOrderRequest request);
         Task<OrderResponse> CancelOrderAsync(Guid id, CancelOrderRequest request);
         Task<OrderResponse> ShipOrderAsync(Guid id);

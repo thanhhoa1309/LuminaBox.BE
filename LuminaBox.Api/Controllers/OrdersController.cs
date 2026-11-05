@@ -121,6 +121,17 @@ namespace LuminaBox.Api.Controllers
         }
 
         [Authorize(Roles = "Organization")]
+        [HttpPut("{id:guid}/status")]
+        [SwaggerOperation(
+            Summary = "Update order delivery status",
+            Description = "Updates the delivery status of an order (Confirmed, Delivering, Delivered). Requires Organization role.")]
+        public async Task<IActionResult> UpdateOrderStatus(Guid id, [FromBody] UpdateOrderStatusRequest request)
+        {
+            var result = await _orderService.UpdateOrderStatusAsync(id, request);
+            return Ok(ApiResult<OrderResponse>.Success(result));
+        }
+
+        [Authorize(Roles = "Organization")]
         [HttpPut("{id:guid}/reject")]
         [SwaggerOperation(
             Summary = "Reject pending order",
@@ -157,7 +168,7 @@ namespace LuminaBox.Api.Controllers
         [HttpPut("{id:guid}/mark-delivered")]
         [SwaggerOperation(
             Summary = "Mark order as delivered",
-            Description = "Marks a delivering (or confirmed pickup) order as delivered. Requires Organization role.")]
+            Description = "Marks a delivering order as delivered. Requires Organization role.")]
         public async Task<IActionResult> MarkOrderDelivered(Guid id)
         {
             var result = await _orderService.MarkOrderDeliveredAsync(id);

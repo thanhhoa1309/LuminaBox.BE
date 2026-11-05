@@ -7,9 +7,6 @@ namespace LuminaBox.Application.Validations.Order
     {
         public CreateOrderFromCartRequestValidator()
         {
-            RuleFor(x => x.FulfillmentType)
-                .IsInEnum().WithMessage("Invalid fulfillment type.");
-
             RuleFor(x => x.PaymentMethod)
                 .IsInEnum().WithMessage("Invalid payment method.");
 
@@ -20,29 +17,9 @@ namespace LuminaBox.Application.Validations.Order
             RuleFor(x => x.CartItemIds)
                 .NotEmpty().WithMessage("At least one CartItemId is required.");
 
-            RuleForEach(x => x.BoxItems).ChildRules(box =>
-            {
-                box.RuleFor(b => b.CartItemId)
-                    .NotEmpty().WithMessage("CartItemId is required for box selections.");
-
-                box.RuleFor(b => b.Selections)
-                    .NotEmpty().WithMessage("Selections are required for box items.");
-
-                box.RuleForEach(b => b.Selections).ChildRules(sel =>
-                {
-                    sel.RuleFor(s => s.ProductId)
-                        .NotEmpty().WithMessage("Selection ProductId is required.");
-
-                    sel.RuleFor(s => s.CategoryId)
-                        .NotEmpty().WithMessage("Selection CategoryId is required.");
-
-                    sel.RuleFor(s => s.FillingId)
-                        .NotEmpty().WithMessage("Selection FillingId is required.");
-
-                    sel.RuleFor(s => s.Quantity)
-                        .GreaterThan(0).WithMessage("Selection Quantity must be greater than 0.");
-                });
-            }).When(x => x.BoxItems != null);
+            RuleForEach(x => x.BoxItems)
+                .SetValidator(new OrderFromCartBoxSelectionRequestValidator())
+                .When(x => x.BoxItems != null);
         }
     }
 }

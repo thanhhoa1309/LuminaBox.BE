@@ -48,7 +48,6 @@ namespace LuminaBox.Application.Services
 
             return await CreateOrdersInternalAsync(
                 userId: userId,
-                fulfillmentType: request.FulfillmentType,
                 paymentMethod: request.PaymentMethod,
                 note: request.Note,
                 requestedItems: request.Items,
@@ -123,7 +122,6 @@ namespace LuminaBox.Application.Services
 
             return await CreateOrdersInternalAsync(
                 userId: userId,
-                fulfillmentType: request.FulfillmentType,
                 paymentMethod: request.PaymentMethod,
                 note: request.Note,
                 requestedItems: requestedItems,
@@ -190,7 +188,6 @@ namespace LuminaBox.Application.Services
                     StallId = o.StallId,
                     StallCode = o.Stall != null ? o.Stall.Code : null,
                     StallName = o.Stall != null ? o.Stall.Name : null,
-                    FulfillmentType = o.FulfillmentType,
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     SubtotalAmount = o.SubtotalAmount,
@@ -277,7 +274,6 @@ namespace LuminaBox.Application.Services
                     StallId = o.StallId,
                     StallCode = o.Stall != null ? o.Stall.Code : null,
                     StallName = o.Stall != null ? o.Stall.Name : null,
-                    FulfillmentType = o.FulfillmentType,
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     SubtotalAmount = o.SubtotalAmount,
@@ -322,7 +318,6 @@ namespace LuminaBox.Application.Services
                         StallName = o.Stall != null ? o.Stall.Name : null,
                         AddressId = o.AddressId,
                         PickupAddressId = o.PickupAddressId,
-                        FulfillmentType = o.FulfillmentType,
                         ReceiverName = o.ReceiverName,
                         ReceiverPhone = o.ReceiverPhone,
                         ShippingAddress = o.ShippingAddress,
@@ -469,6 +464,17 @@ namespace LuminaBox.Application.Services
                 NotificationCatalog.OrderConfirmed(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
 
             return await GetOrderByDetail(order.Id);
+        }
+
+        public async Task<OrderResponse> UpdateOrderStatusAsync(Guid id, UpdateOrderStatusRequest request)
+        {
+            return request.Status switch
+            {
+                OrderStatus.Confirmed => await ConfirmOrderAsync(id),
+                OrderStatus.Delivering => await ShipOrderAsync(id),
+                OrderStatus.Delivered => await MarkOrderDeliveredAsync(id),
+                _ => throw ErrorHelper.BadRequest($"Use the dedicated reject or cancel endpoint to change status to '{request.Status}'.")
+            };
         }
 
         public async Task<OrderResponse> RejectOrderAsync(Guid id, RejectOrderRequest request)
@@ -695,11 +701,8 @@ namespace LuminaBox.Application.Services
             if (order.Organizer.UserId != userId)
                 throw ErrorHelper.Forbidden("You do not own this order.");
 
-            var canDeliverFromConfirmedPickup = order.FulfillmentType == FulfillmentType.Pickup &&
-                                                order.Status == OrderStatus.Confirmed;
-
-            if (order.Status != OrderStatus.Delivering && !canDeliverFromConfirmedPickup)
-                throw ErrorHelper.Conflict("Order must be in Delivering status (or Confirmed for Pickup) to be marked as delivered.");
+            if (order.Status != OrderStatus.Delivering)
+                throw ErrorHelper.Conflict("Order must be in Delivering status to be marked as delivered.");
 
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
@@ -729,7 +732,6 @@ namespace LuminaBox.Application.Services
 
         private async Task<List<OrderResponse>> CreateOrdersInternalAsync(
             Guid userId,
-            FulfillmentType fulfillmentType,
             PaymentMethod paymentMethod,
             string? note,
             List<CreateOrderItemRequest> requestedItems,
@@ -737,48 +739,23 @@ namespace LuminaBox.Application.Services
             List<CartItem>? cartItemsToRemove,
             Dictionary<int, decimal>? cartSnapshotPrices)
         {
+            const FulfillmentType fulfillmentType = FulfillmentType.Delivery;
             var now = _currentTime.GetCurrentTime();
 
-            var user = await _unitOfWork.Users.GetQueryable()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Id == userId)
-                ?? throw ErrorHelper.NotFound("User not found.");
-
-            Address? buyerAddress = null;
-            string receiverName;
-            string receiverPhone;
-            string? fullShippingAddressText = null;
-
-            var defaultShippingAddress = await _unitOfWork.Addresses.GetQueryable()
+            var buyerAddress = await _unitOfWork.Addresses.GetQueryable()
                 .AsNoTracking()
                 .Include(a => a.Ward)
                     .ThenInclude(w => w.District)
                         .ThenInclude(d => d.Province)
                 .FirstOrDefaultAsync(a => a.UserId == userId
                                        && a.Type == AddressType.Shipping
-                                       && a.IsDefault);
+                                       && a.IsDefault)
+                ?? throw ErrorHelper.BadRequest("Default shipping address not found. Please set a default shipping address before placing an order.");
 
-            if (fulfillmentType == FulfillmentType.Delivery)
-            {
-                buyerAddress = defaultShippingAddress
-                    ?? throw ErrorHelper.BadRequest("Default shipping address not found. Please set a default shipping address before placing a delivery order.");
-
-                receiverName = buyerAddress.ContactName;
-                receiverPhone = buyerAddress.Phone;
-                fullShippingAddressText =
-                    $"{buyerAddress.AddressLine}, {buyerAddress.Ward.Name}, {buyerAddress.Ward.District.Name}, {buyerAddress.Ward.District.Province.Name}";
-            }
-            else
-            {
-                receiverName = !string.IsNullOrWhiteSpace(user.FullName)
-                    ? user.FullName
-                    : defaultShippingAddress?.ContactName ?? "Customer";
-
-                receiverPhone = !string.IsNullOrWhiteSpace(user.Phone)
-                    ? user.Phone
-                    : defaultShippingAddress?.Phone
-                      ?? throw ErrorHelper.BadRequest("Phone number is required on your profile or default address for pickup orders.");
-            }
+            var receiverName = buyerAddress.ContactName;
+            var receiverPhone = buyerAddress.Phone;
+            var fullShippingAddressText =
+                $"{buyerAddress.AddressLine}, {buyerAddress.Ward.Name}, {buyerAddress.Ward.District.Name}, {buyerAddress.Ward.District.Province.Name}";
 
             var preparedLines = new List<PreparedOrderLine>();
             var requiredProductStock = new Dictionary<(Guid ProductItemId, Guid? StallId), int>();

@@ -173,7 +173,6 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "fulfillmentType": "Delivery",
   "paymentMethod": "Stripe",
   "note": "Giao giờ hành chính",
   "voucherIds": [
@@ -196,7 +195,6 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "fulfillmentType": "Delivery",
   "paymentMethod": "CashOnDelivery",
   "voucherIds": [
     "{{voucherId}}"

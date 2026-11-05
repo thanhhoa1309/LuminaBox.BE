@@ -13,7 +13,6 @@ namespace LuminaBox.Application.Dtos.Order
         public Guid? StallId { get; set; }
         public string? StallCode { get; set; }
         public string? StallName { get; set; }
-        public FulfillmentType FulfillmentType { get; set; }
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
         public decimal SubtotalAmount { get; set; }
