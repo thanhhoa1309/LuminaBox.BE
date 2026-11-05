@@ -89,6 +89,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IAuthService, AuthService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<INotificationService, NotificationService>();
+            services.AddScoped<IOrganizerRegistrationService, OrganizerRegistrationService>();
             services.AddScoped<ILocationService, LocationService>();
             services.AddScoped<IAddressService, AddressService>();
             services.AddScoped<IGeoSyncService, GeoSyncService>();
@@ -105,6 +106,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IOrderService, OrderService>();
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<IWalletService, WalletService>();
+            services.AddScoped<ISeedService, SeedService>();
 
             return services;
         }

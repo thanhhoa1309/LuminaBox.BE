@@ -145,6 +145,9 @@ stateDiagram-v2
 | BR-19 | Mọi đổi trạng thái order ghi `OrderStatusHistory`. |
 | BR-20 | Feedback: 1 lần / `OrderItem`, chỉ khi order `Delivered`. |
 | BR-21 | Organizer `Suspended` / hết quyền Online: không tạo/sửa catalog & voucher, không nhận đơn mới; vẫn hoàn tất đơn cũ. |
+| BR-22 | Organizer `Suspended` không gửi được đơn additional; đơn đang chờ của họ không duyệt / xác nhận được (409). |
+| BR-23 | Organizer đã có hồ sơ khi đơn mới có hiệu lực: giữ nguyên hồ sơ cũ, không ghi đè bằng `BrandName` / `ContactPhone` / `BusinessInfo` trong đơn. Tạo mới thì `ContactEmail` lấy từ email User. |
+| BR-24 | Cơ sở dữ liệu chặn 2 hợp đồng `Confirmed`/`Active` trùng thời gian trên cùng stall bằng constraint `EX_StallRentals_NoOverlap` (vi phạm → 409). |
 
 ---
 
@@ -250,6 +253,13 @@ stateDiagram-v2
 3. User **Cancel** nếu không đồng ý rate.
 
 **Từ chối:** chỉ khi `Pending`, bắt buộc `RejectReason`.
+
+**Ràng buộc khi duyệt**
+
+- Đơn Stall không nhận `CommissionRate` (400); đơn Online bắt buộc có (400).
+- Đơn Stall đã quá `StartDate` không duyệt được (409).
+- Sau khi role đổi thành `Organization`, FE phải gọi `refresh-token` rồi kết nối lại SignalR để token và nhóm realtime nhận role mới.
+- Khi User xác nhận đơn Online, Manager nhận thông báo realtime; User hủy đơn cũng vậy.
 
 **Hồ sơ Organizer**
 

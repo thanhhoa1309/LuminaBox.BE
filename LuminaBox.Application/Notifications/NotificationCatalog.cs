@@ -1,4 +1,5 @@
-﻿using LuminaBox.Domain.Enums;
+﻿using System.Globalization;
+using LuminaBox.Domain.Enums;
 
 namespace LuminaBox.Application.Notifications
 {
@@ -51,15 +52,43 @@ namespace LuminaBox.Application.Notifications
                 OrganizerRegistrationEntity,
                 registrationId);
 
-        public static NotificationCommand OrganizerApproved(Guid userId, Guid registrationId, string brandName)
+        // Stall only: a stall rental does not grant online selling (BR-04), so the copy must not promise it
+        public static NotificationCommand OrganizerApproved(Guid userId, Guid registrationId, string brandName, string stallCode)
             => new(
                 NotificationType.OrganizerApproved,
                 NotificationAudience.ForUser(userId, NotificationRecipientRole.User),
                 NotificationRoleTemplates.For(
                     NotificationRecipientRole.User,
-                    "Đăng ký Organizer thành công",
-                    "Đơn đăng ký Organizer cho thương hiệu \"{brandName}\" của bạn đã được {actorName} duyệt. Bạn có thể bắt đầu bán hàng.",
+                    "Đơn thuê gian hàng đã được duyệt",
+                    "Đơn thuê gian hàng {stallCode} của thương hiệu \"{brandName}\" đã được {actorName} duyệt.",
                     NotificationChannel.Email, NotificationChannel.Realtime),
+                NotificationTokenKeys.Create(brandName: brandName, stallCode: stallCode),
+                OrganizerRegistrationEntity,
+                registrationId);
+
+        // The registrant is the actor here, so the managers are told instead of the registrant
+        public static NotificationCommand OnlineRegistrationConfirmed(Guid registrationId, string brandName, decimal commissionRate)
+            => new(
+                NotificationType.OrganizerApproved,
+                NotificationAudience.ForManagers(),
+                NotificationRoleTemplates.For(
+                    NotificationRecipientRole.Manager,
+                    "Đơn bán online đã được xác nhận",
+                    "{actorName} đã đồng ý tỷ lệ hoa hồng {commissionRate}% cho thương hiệu \"{brandName}\".",
+                    NotificationChannel.Realtime),
+                NotificationTokenKeys.Create(brandName: brandName, commissionRate: commissionRate.ToString("0.##", CultureInfo.InvariantCulture)),
+                OrganizerRegistrationEntity,
+                registrationId);
+
+        public static NotificationCommand RegistrationCancelledByOwner(Guid registrationId, string brandName)
+            => new(
+                NotificationType.RegistrationCancelled,
+                NotificationAudience.ForManagers(),
+                NotificationRoleTemplates.For(
+                    NotificationRecipientRole.Manager,
+                    "Đơn đăng ký Organizer đã bị hủy",
+                    "{actorName} đã hủy đơn đăng ký Organizer của thương hiệu \"{brandName}\".",
+                    NotificationChannel.Realtime),
                 NotificationTokenKeys.Create(brandName: brandName),
                 OrganizerRegistrationEntity,
                 registrationId);
@@ -81,7 +110,7 @@ namespace LuminaBox.Application.Notifications
                         ? "Đơn đăng ký bán online cho thương hiệu \"{brandName}\" đã được {actorName} duyệt với tỷ lệ hoa hồng {commissionRate}%. Hãy xác nhận để bắt đầu bán online."
                         : "Đơn đăng ký bán online cho thương hiệu \"{brandName}\" đã được {actorName} duyệt với tỷ lệ hoa hồng {commissionRate}%. Hãy xác nhận để kích hoạt tài khoản Organizer.",
                     NotificationChannel.Email, NotificationChannel.Realtime),
-                NotificationTokenKeys.Create(brandName: brandName, commissionRate: commissionRate.ToString("0.##")),
+                NotificationTokenKeys.Create(brandName: brandName, commissionRate: commissionRate.ToString("0.##", CultureInfo.InvariantCulture)),
                 OrganizerRegistrationEntity,
                 registrationId);
 

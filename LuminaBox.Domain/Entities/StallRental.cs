@@ -2,6 +2,8 @@
 
 namespace LuminaBox.Domain.Entities
 {
+    // Overlapping Confirmed/Active rentals of a stall are also rejected by the database
+    // through the EX_StallRentals_NoOverlap constraint, created by a raw SQL migration
     public class StallRental : BaseEntity
     {
         public Guid StallId { get; set; }
