@@ -20,18 +20,9 @@ namespace LuminaBox.Application.Services
             _organizerAccess = organizerAccess;
         }
 
-        public async Task<Pagination<ProductSummaryResponse>> GetAllAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            Guid? categoryId = null,
-            Guid? fillingId = null,
-            Guid? organizerId = null,
-            Guid? stallId = null)
+        public async Task<Pagination<ProductSummaryResponse>> GetAllAsync(ProductListQuery filter)
         {
-            var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
+            var pagination = new PaginationParameter { PageIndex = filter.Page, PageSize = filter.PageSize };
 
             var query = _unitOfWork.Products.GetQueryable()
                 .AsNoTracking()
@@ -39,28 +30,28 @@ namespace LuminaBox.Application.Services
                     && p.Organizer.Status == OrganizerStatus.Active
                     && p.Items.Any());
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(p => p.Name.ToLower().Contains(keyword));
             }
 
-            if (categoryId.HasValue)
-                query = query.Where(p => p.Items.Any(i => i.CategoryId == categoryId.Value));
+            if (filter.CategoryId.HasValue)
+                query = query.Where(p => p.Items.Any(i => i.CategoryId == filter.CategoryId.Value));
 
-            if (fillingId.HasValue)
-                query = query.Where(p => p.Items.Any(i => i.FillingId == fillingId.Value));
+            if (filter.FillingId.HasValue)
+                query = query.Where(p => p.Items.Any(i => i.FillingId == filter.FillingId.Value));
 
-            if (organizerId.HasValue)
-                query = query.Where(p => p.OrganizerId == organizerId.Value);
+            if (filter.OrganizerId.HasValue)
+                query = query.Where(p => p.OrganizerId == filter.OrganizerId.Value);
 
-            if (stallId.HasValue)
+            if (filter.StallId.HasValue)
                 query = query.Where(p => p.Items.Any(i => i.Stocks.Any(s =>
-                    s.StallId == stallId.Value && s.IsActive && s.StockQuantity > 0)));
+                    s.StallId == filter.StallId.Value && s.IsActive && s.StockQuantity > 0)));
 
             var totalCount = await query.CountAsync();
 
-            query = ApplySort(query, sortBy, isDescending);
+            query = ApplySort(query, filter.SortBy, filter.IsDescending);
 
             var items = await query
                 .Skip((pagination.PageIndex - 1) * pagination.PageSize)
@@ -84,37 +75,30 @@ namespace LuminaBox.Application.Services
             return product;
         }
 
-        public async Task<Pagination<ProductResponse>> GetMineAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            ProductStatus? status = null,
-            Guid? categoryId = null)
+        public async Task<Pagination<ProductResponse>> GetMineAsync(MyProductListQuery filter)
         {
             var organizer = await _organizerAccess.GetSellingOrganizerAsync();
-            var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
+            var pagination = new PaginationParameter { PageIndex = filter.Page, PageSize = filter.PageSize };
 
             var query = _unitOfWork.Products.GetQueryable()
                 .AsNoTracking()
                 .Where(p => p.OrganizerId == organizer.Id);
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(p => p.Name.ToLower().Contains(keyword));
             }
 
-            if (status.HasValue)
-                query = query.Where(p => p.Status == status.Value);
+            if (filter.Status.HasValue)
+                query = query.Where(p => p.Status == filter.Status.Value);
 
-            if (categoryId.HasValue)
-                query = query.Where(p => p.Items.Any(i => i.CategoryId == categoryId.Value));
+            if (filter.CategoryId.HasValue)
+                query = query.Where(p => p.Items.Any(i => i.CategoryId == filter.CategoryId.Value));
 
             var totalCount = await query.CountAsync();
 
-            query = ApplySort(query, sortBy, isDescending);
+            query = ApplySort(query, filter.SortBy, filter.IsDescending);
 
             var items = await query
                 .Skip((pagination.PageIndex - 1) * pagination.PageSize)

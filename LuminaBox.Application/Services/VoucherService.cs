@@ -116,27 +116,20 @@ namespace LuminaBox.Application.Services
             return await QueryVoucherByIdAsync(voucher.Id);
         }
 
-        public async Task<Pagination<VoucherResponse>> GetAllVouchersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            VoucherScope? scope = null,
-            VoucherStatus? status = null)
+        public async Task<Pagination<VoucherResponse>> GetAllVouchersAsync(AllVoucherListQuery filter)
         {
             var query = _unitOfWork.Vouchers.GetQueryable()
                 .AsNoTracking();
 
-            if (scope.HasValue)
-                query = query.Where(v => v.Scope == scope.Value);
+            if (filter.Scope.HasValue)
+                query = query.Where(v => v.Scope == filter.Scope.Value);
 
-            if (status.HasValue)
-                query = query.Where(v => v.Status == status.Value);
+            if (filter.Status.HasValue)
+                query = query.Where(v => v.Status == filter.Status.Value);
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(v =>
                     v.Code.ToLower().Contains(keyword) ||
                     v.Name.ToLower().Contains(keyword));
@@ -144,18 +137,18 @@ namespace LuminaBox.Application.Services
 
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.ToLower() switch
+            query = filter.SortBy?.ToLower() switch
             {
-                "code" => isDescending ? query.OrderByDescending(v => v.Code) : query.OrderBy(v => v.Code),
-                "name" => isDescending ? query.OrderByDescending(v => v.Name) : query.OrderBy(v => v.Name),
-                "startat" => isDescending ? query.OrderByDescending(v => v.StartAt) : query.OrderBy(v => v.StartAt),
-                "endat" => isDescending ? query.OrderByDescending(v => v.EndAt) : query.OrderBy(v => v.EndAt),
-                _ => isDescending ? query.OrderByDescending(v => v.CreatedAt) : query.OrderBy(v => v.CreatedAt)
+                "code" => filter.IsDescending ? query.OrderByDescending(v => v.Code) : query.OrderBy(v => v.Code),
+                "name" => filter.IsDescending ? query.OrderByDescending(v => v.Name) : query.OrderBy(v => v.Name),
+                "startat" => filter.IsDescending ? query.OrderByDescending(v => v.StartAt) : query.OrderBy(v => v.StartAt),
+                "endat" => filter.IsDescending ? query.OrderByDescending(v => v.EndAt) : query.OrderBy(v => v.EndAt),
+                _ => filter.IsDescending ? query.OrderByDescending(v => v.CreatedAt) : query.OrderBy(v => v.CreatedAt)
             };
 
             var items = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(v => new VoucherResponse
                 {
                     Id = v.Id,
@@ -179,16 +172,10 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<VoucherResponse>(items, totalCount, page, pageSize);
+            return new Pagination<VoucherResponse>(items, totalCount, filter.Page, filter.PageSize);
         }
 
-        public async Task<Pagination<VoucherResponse>> GetMyOrganizerVouchersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            VoucherStatus? status = null)
+        public async Task<Pagination<VoucherResponse>> GetMyOrganizerVouchersAsync(VoucherListQuery filter)
         {
             var userId = _claimsService.GetRequiredUserId();
 
@@ -201,12 +188,12 @@ namespace LuminaBox.Application.Services
                 .AsNoTracking()
                 .Where(v => v.OrganizerId == organizer.Id);
 
-            if (status.HasValue)
-                query = query.Where(v => v.Status == status.Value);
+            if (filter.Status.HasValue)
+                query = query.Where(v => v.Status == filter.Status.Value);
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(v =>
                     v.Code.ToLower().Contains(keyword) ||
                     v.Name.ToLower().Contains(keyword));
@@ -214,18 +201,18 @@ namespace LuminaBox.Application.Services
 
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.ToLower() switch
+            query = filter.SortBy?.ToLower() switch
             {
-                "code" => isDescending ? query.OrderByDescending(v => v.Code) : query.OrderBy(v => v.Code),
-                "name" => isDescending ? query.OrderByDescending(v => v.Name) : query.OrderBy(v => v.Name),
-                "startat" => isDescending ? query.OrderByDescending(v => v.StartAt) : query.OrderBy(v => v.StartAt),
-                "endat" => isDescending ? query.OrderByDescending(v => v.EndAt) : query.OrderBy(v => v.EndAt),
-                _ => isDescending ? query.OrderByDescending(v => v.CreatedAt) : query.OrderBy(v => v.CreatedAt)
+                "code" => filter.IsDescending ? query.OrderByDescending(v => v.Code) : query.OrderBy(v => v.Code),
+                "name" => filter.IsDescending ? query.OrderByDescending(v => v.Name) : query.OrderBy(v => v.Name),
+                "startat" => filter.IsDescending ? query.OrderByDescending(v => v.StartAt) : query.OrderBy(v => v.StartAt),
+                "endat" => filter.IsDescending ? query.OrderByDescending(v => v.EndAt) : query.OrderBy(v => v.EndAt),
+                _ => filter.IsDescending ? query.OrderByDescending(v => v.CreatedAt) : query.OrderBy(v => v.CreatedAt)
             };
 
             var items = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(v => new VoucherResponse
                 {
                     Id = v.Id,
@@ -249,7 +236,7 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<VoucherResponse>(items, totalCount, page, pageSize);
+            return new Pagination<VoucherResponse>(items, totalCount, filter.Page, filter.PageSize);
         }
 
         public async Task<VoucherResponse> GetVoucherByDetail(Guid id)

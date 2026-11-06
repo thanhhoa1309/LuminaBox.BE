@@ -9,21 +9,8 @@ namespace LuminaBox.Application.Interface
     {
         Task<VoucherResponse> CreatePlatformVoucherAsync(CreateVoucherRequest request);
         Task<VoucherResponse> CreateOrganizerVoucherAsync(CreateVoucherRequest request);
-        Task<Pagination<VoucherResponse>> GetAllVouchersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            VoucherScope? scope = null,
-            VoucherStatus? status = null);
-        Task<Pagination<VoucherResponse>> GetMyOrganizerVouchersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            VoucherStatus? status = null);
+        Task<Pagination<VoucherResponse>> GetAllVouchersAsync(AllVoucherListQuery filter);
+        Task<Pagination<VoucherResponse>> GetMyOrganizerVouchersAsync(VoucherListQuery filter);
         Task<VoucherResponse> GetVoucherByDetail(Guid id);
         Task<VoucherResponse> UpdateVoucherAsync(Guid id, UpdateVoucherRequest request);
         Task<VoucherResponse> UpdateVoucherStatusAsync(Guid id, UpdateVoucherStatusRequest request);

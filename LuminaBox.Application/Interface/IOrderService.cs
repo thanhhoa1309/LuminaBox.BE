@@ -8,25 +8,8 @@ namespace LuminaBox.Application.Interface
     {
         Task<List<OrderResponse>> CreateOrderAsync(CreateOrderRequest request);
         Task<List<OrderResponse>> CreateOrderFromCartAsync(CreateOrderFromCartRequest request);
-        Task<Pagination<OrderSummaryResponse>> GetMyOrdersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            OrderStatus? status = null,
-            DateTime? fromDate = null,
-            DateTime? toDate = null);
-        Task<Pagination<OrderSummaryResponse>> GetMyOrganizerOrdersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            OrderStatus? status = null,
-            Guid? stallId = null,
-            DateTime? fromDate = null,
-            DateTime? toDate = null);
+        Task<Pagination<OrderSummaryResponse>> GetMyOrdersAsync(OrderListQuery filter);
+        Task<Pagination<OrderSummaryResponse>> GetMyOrganizerOrdersAsync(OrganizerOrderListQuery filter);
         Task<OrderResponse> GetOrderByDetail(Guid id);
         Task<OrderResponse> ConfirmOrderAsync(Guid id);
         Task<OrderResponse> UpdateOrderStatusAsync(Guid id, UpdateOrderStatusRequest request);

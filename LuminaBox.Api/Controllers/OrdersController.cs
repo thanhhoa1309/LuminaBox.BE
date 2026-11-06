@@ -47,25 +47,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get paginated list of current user orders",
             Description = "Gets a paginated list of orders placed by the current user. Requires authentication.")]
-        public async Task<IActionResult> GetMyOrders(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] OrderStatus? status = null,
-            [FromQuery] DateTime? fromDate = null,
-            [FromQuery] DateTime? toDate = null)
+        public async Task<IActionResult> GetMyOrders([FromQuery] OrderListQuery filter)
         {
-            var result = await _orderService.GetMyOrdersAsync(
-                search,
-                sortBy,
-                isDescending,
-                page,
-                pageSize,
-                status,
-                fromDate,
-                toDate);
+            var result = await _orderService.GetMyOrdersAsync(filter);
             return Ok(ApiResult<Pagination<OrderSummaryResponse>>.Success(result));
         }
 
@@ -74,27 +58,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get paginated list of current organizer orders",
             Description = "Gets a paginated list of orders belonging to the current organizer. Requires Organization role.")]
-        public async Task<IActionResult> GetMyOrganizerOrders(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] OrderStatus? status = null,
-            [FromQuery] Guid? stallId = null,
-            [FromQuery] DateTime? fromDate = null,
-            [FromQuery] DateTime? toDate = null)
+        public async Task<IActionResult> GetMyOrganizerOrders([FromQuery] OrganizerOrderListQuery filter)
         {
-            var result = await _orderService.GetMyOrganizerOrdersAsync(
-                search,
-                sortBy,
-                isDescending,
-                page,
-                pageSize,
-                status,
-                stallId,
-                fromDate,
-                toDate);
+            var result = await _orderService.GetMyOrganizerOrdersAsync(filter);
             return Ok(ApiResult<Pagination<OrderSummaryResponse>>.Success(result));
         }
 

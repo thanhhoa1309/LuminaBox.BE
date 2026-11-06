@@ -47,23 +47,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get paginated list of vouchers",
             Description = "Gets a paginated list of all vouchers across the platform. Requires Manager role.")]
-        public async Task<IActionResult> GetAllVouchers(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] VoucherScope? scope = null,
-            [FromQuery] VoucherStatus? status = null)
+        public async Task<IActionResult> GetAllVouchers([FromQuery] AllVoucherListQuery filter)
         {
-            var result = await _voucherService.GetAllVouchersAsync(
-                search,
-                sortBy,
-                isDescending,
-                page,
-                pageSize,
-                scope,
-                status);
+            var result = await _voucherService.GetAllVouchersAsync(filter);
             return Ok(ApiResult<Pagination<VoucherResponse>>.Success(result));
         }
 
@@ -72,21 +58,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get paginated list of current organizer vouchers",
             Description = "Gets a paginated list of vouchers belonging to the current organizer. Requires Organization role.")]
-        public async Task<IActionResult> GetMyOrganizerVouchers(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] VoucherStatus? status = null)
+        public async Task<IActionResult> GetMyOrganizerVouchers([FromQuery] VoucherListQuery filter)
         {
-            var result = await _voucherService.GetMyOrganizerVouchersAsync(
-                search,
-                sortBy,
-                isDescending,
-                page,
-                pageSize,
-                status);
+            var result = await _voucherService.GetMyOrganizerVouchersAsync(filter);
             return Ok(ApiResult<Pagination<VoucherResponse>>.Success(result));
         }
 

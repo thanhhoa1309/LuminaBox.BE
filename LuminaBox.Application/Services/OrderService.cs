@@ -133,15 +133,7 @@ namespace LuminaBox.Application.Services
                 cartSnapshotPrices: cartSnapshotPrices);
         }
 
-        public async Task<Pagination<OrderSummaryResponse>> GetMyOrdersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            OrderStatus? status = null,
-            DateTime? fromDate = null,
-            DateTime? toDate = null)
+        public async Task<Pagination<OrderSummaryResponse>> GetMyOrdersAsync(OrderListQuery filter)
         {
             var userId = _claimsService.GetRequiredUserId();
 
@@ -149,18 +141,18 @@ namespace LuminaBox.Application.Services
                 .AsNoTracking()
                 .Where(o => o.UserId == userId);
 
-            if (status.HasValue)
-                query = query.Where(o => o.Status == status.Value);
+            if (filter.Status.HasValue)
+                query = query.Where(o => o.Status == filter.Status.Value);
 
-            if (fromDate.HasValue)
-                query = query.Where(o => o.CreatedAt >= fromDate.Value);
+            if (filter.FromDate.HasValue)
+                query = query.Where(o => o.CreatedAt >= filter.FromDate.Value);
 
-            if (toDate.HasValue)
-                query = query.Where(o => o.CreatedAt <= toDate.Value);
+            if (filter.ToDate.HasValue)
+                query = query.Where(o => o.CreatedAt <= filter.ToDate.Value);
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(o =>
                     o.OrderCode.ToLower().Contains(keyword) ||
                     o.Organizer.BrandName.ToLower().Contains(keyword) ||
@@ -169,17 +161,17 @@ namespace LuminaBox.Application.Services
 
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.ToLower() switch
+            query = filter.SortBy?.ToLower() switch
             {
-                "ordercode" => isDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
-                "totalamount" => isDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
-                "status" => isDescending ? query.OrderByDescending(o => o.Status) : query.OrderBy(o => o.Status),
-                _ => isDescending ? query.OrderByDescending(o => o.CreatedAt) : query.OrderBy(o => o.CreatedAt)
+                "ordercode" => filter.IsDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
+                "totalamount" => filter.IsDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
+                "status" => filter.IsDescending ? query.OrderByDescending(o => o.Status) : query.OrderBy(o => o.Status),
+                _ => filter.IsDescending ? query.OrderByDescending(o => o.CreatedAt) : query.OrderBy(o => o.CreatedAt)
             };
 
             var items = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(o => new OrderSummaryResponse
                 {
                     Id = o.Id,
@@ -207,19 +199,10 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<OrderSummaryResponse>(items, totalCount, page, pageSize);
+            return new Pagination<OrderSummaryResponse>(items, totalCount, filter.Page, filter.PageSize);
         }
 
-        public async Task<Pagination<OrderSummaryResponse>> GetMyOrganizerOrdersAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            OrderStatus? status = null,
-            Guid? stallId = null,
-            DateTime? fromDate = null,
-            DateTime? toDate = null)
+        public async Task<Pagination<OrderSummaryResponse>> GetMyOrganizerOrdersAsync(OrganizerOrderListQuery filter)
         {
             var userId = _claimsService.GetRequiredUserId();
 
@@ -232,21 +215,21 @@ namespace LuminaBox.Application.Services
                 .AsNoTracking()
                 .Where(o => o.OrganizerId == organizer.Id);
 
-            if (status.HasValue)
-                query = query.Where(o => o.Status == status.Value);
+            if (filter.Status.HasValue)
+                query = query.Where(o => o.Status == filter.Status.Value);
 
-            if (stallId.HasValue)
-                query = query.Where(o => o.StallId == stallId.Value);
+            if (filter.StallId.HasValue)
+                query = query.Where(o => o.StallId == filter.StallId.Value);
 
-            if (fromDate.HasValue)
-                query = query.Where(o => o.CreatedAt >= fromDate.Value);
+            if (filter.FromDate.HasValue)
+                query = query.Where(o => o.CreatedAt >= filter.FromDate.Value);
 
-            if (toDate.HasValue)
-                query = query.Where(o => o.CreatedAt <= toDate.Value);
+            if (filter.ToDate.HasValue)
+                query = query.Where(o => o.CreatedAt <= filter.ToDate.Value);
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (!string.IsNullOrWhiteSpace(filter.Search))
             {
-                var keyword = search.Trim().ToLower();
+                var keyword = filter.Search.Trim().ToLower();
                 query = query.Where(o =>
                     o.OrderCode.ToLower().Contains(keyword) ||
                     o.ReceiverName.ToLower().Contains(keyword) ||
@@ -255,17 +238,17 @@ namespace LuminaBox.Application.Services
 
             var totalCount = await query.CountAsync();
 
-            query = sortBy?.ToLower() switch
+            query = filter.SortBy?.ToLower() switch
             {
-                "ordercode" => isDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
-                "totalamount" => isDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
-                "status" => isDescending ? query.OrderByDescending(o => o.Status) : query.OrderBy(o => o.Status),
-                _ => isDescending ? query.OrderByDescending(o => o.CreatedAt) : query.OrderBy(o => o.CreatedAt)
+                "ordercode" => filter.IsDescending ? query.OrderByDescending(o => o.OrderCode) : query.OrderBy(o => o.OrderCode),
+                "totalamount" => filter.IsDescending ? query.OrderByDescending(o => o.TotalAmount) : query.OrderBy(o => o.TotalAmount),
+                "status" => filter.IsDescending ? query.OrderByDescending(o => o.Status) : query.OrderBy(o => o.Status),
+                _ => filter.IsDescending ? query.OrderByDescending(o => o.CreatedAt) : query.OrderBy(o => o.CreatedAt)
             };
 
             var items = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+                .Skip((filter.Page - 1) * filter.PageSize)
+                .Take(filter.PageSize)
                 .Select(o => new OrderSummaryResponse
                 {
                     Id = o.Id,
@@ -293,7 +276,7 @@ namespace LuminaBox.Application.Services
                 })
                 .ToListAsync();
 
-            return new Pagination<OrderSummaryResponse>(items, totalCount, page, pageSize);
+            return new Pagination<OrderSummaryResponse>(items, totalCount, filter.Page, filter.PageSize);
         }
 
         public async Task<OrderResponse> GetOrderByDetail(Guid id)

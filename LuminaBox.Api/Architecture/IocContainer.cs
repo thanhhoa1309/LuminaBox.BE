@@ -213,6 +213,7 @@ namespace LuminaBox.Api.Architecture
         {
             services.AddSwaggerGen(c =>
             {
+                c.DescribeAllParametersInCamelCase();
                 c.UseInlineDefinitionsForEnums();
 
                 c.SwaggerDoc("v1", new OpenApiInfo

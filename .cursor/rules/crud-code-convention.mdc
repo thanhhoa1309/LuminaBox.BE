@@ -64,13 +64,7 @@ public class UpdateCakeCategoryRequestValidator : AbstractValidator<UpdateCakeCa
 ```csharp
 public interface ICakeCategoryService
 {
-    Task<Pagination<CakeCategoryResponse>> GetAllAsync(
-        string? search,
-        string? sortBy,
-        bool isDescending,
-        int page,
-        int pageSize,
-        CakeCategoryStatus? status = null);
+    Task<Pagination<CakeCategoryResponse>> GetAllAsync(CakeCategoryListQuery filter);
     Task<CakeCategoryResponse> GetCakeCategoryByDetail(Guid id);
     Task<CakeCategoryResponse> CreateCakeCategoryAsync(CreateCakeCategoryRequest request);
     Task<CakeCategoryResponse> UpdateCakeCategoryAsync(Guid id, UpdateCakeCategoryRequest request);
@@ -78,15 +72,13 @@ public interface ICakeCategoryService
 }
 ```
 
-- `GetAllAsync` (và mọi method có phân trang) **bắt buộc** khai báo tham số theo đúng thứ tự, mỗi tham số một dòng:
-  1. `string? search`
-  2. `string? sortBy`
-  3. `bool isDescending`
-  4. `int page`
-  5. `int pageSize`
-  6. Các filter riêng của entity (status, khoảng ngày, id cha...), luôn nullable và có default `= null`.
+- `GetAllAsync` (và mọi method có phân trang) nhận **một** object query, đặt tên tham số là `filter`:
+  - Class `{Entity}ListQuery` đặt trong `Dtos/{Entity}/`, kế thừa `ListQuery` (`Commons/ListQuery.cs`).
+  - `ListQuery` đã có `Search`, `SortBy`, `IsDescending`, `Page`, `PageSize` và tự giới hạn `Page`, `PageSize`.
+  - Filter riêng của entity (status, khoảng ngày, id cha...) là property nullable trong class con.
+  - Controller nhận `[FromQuery] {Entity}ListQuery filter`. URL query string giữ nguyên.
+- Service cũ còn truyền từng tham số thì đổi khi có dịp sửa tới, không cần đổi hàng loạt.
 - Trả về `Pagination<{Entity}Response>`.
-- KHÔNG nhận `PaginationParameter` trực tiếp ở interface; service tự tạo `PaginationParameter` từ `page`, `pageSize`.
 
 ## Bước 3: Service — `MoonCake.Application/Services/{Entity}Service.cs`
 - Trả response bằng cách project thẳng `new {Entity}Response { ... }` (`.Select(...)` trên query).
@@ -96,25 +88,19 @@ public interface ICakeCategoryService
 - KHÔNG validate input trong service. Chỉ giữ check nghiệp vụ cần DB (không tồn tại, trùng tên...).
 - Truy cập dữ liệu qua `IUnitOfWork`; xóa dùng `SoftRemove`.
 - `GetAllAsync`: tạo `PaginationParameter` → áp filter → đếm tổng → sắp xếp → `Skip/Take` → `.Select(new {Entity}Response)`.
-  - Sắp xếp bằng `switch` trên `sortBy?.Trim().ToLowerInvariant()`; giá trị không khớp thì mặc định theo `CreatedAt`.
-  - Mọi nhánh sắp xếp đều tôn trọng `isDescending`.
+  - Sắp xếp bằng `switch` trên `filter.SortBy?.Trim().ToLowerInvariant()`; giá trị không khớp thì mặc định theo `CreatedAt`.
+  - Mọi nhánh sắp xếp đều tôn trọng `filter.IsDescending`.
 
 ```csharp
-public async Task<Pagination<CakeCategoryResponse>> GetAllAsync(
-    string? search,
-    string? sortBy,
-    bool isDescending,
-    int page,
-    int pageSize,
-    CakeCategoryStatus? status = null)
+public async Task<Pagination<CakeCategoryResponse>> GetAllAsync(CakeCategoryListQuery filter)
 {
-    var pagination = new PaginationParameter { PageIndex = page, PageSize = pageSize };
+    var pagination = new PaginationParameter { PageIndex = filter.Page, PageSize = filter.PageSize };
 
     var query = _unitOfWork.CakeCategories.GetQueryable().AsNoTracking();
 
-    if (!string.IsNullOrWhiteSpace(search))
+    if (!string.IsNullOrWhiteSpace(filter.Search))
     {
-        var keyword = search.Trim().ToLower();
+        var keyword = filter.Search.Trim().ToLower();
         query = query.Where(c => c.Name.ToLower().Contains(keyword));
     }
 
@@ -123,10 +109,10 @@ public async Task<Pagination<CakeCategoryResponse>> GetAllAsync(
 
     var totalCount = await query.CountAsync();
 
-    query = sortBy?.Trim().ToLowerInvariant() switch
+    query = filter.SortBy?.Trim().ToLowerInvariant() switch
     {
-        "name" => isDescending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name),
-        _ => isDescending ? query.OrderByDescending(c => c.CreatedAt) : query.OrderBy(c => c.CreatedAt)
+        "name" => filter.IsDescending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name),
+        _ => filter.IsDescending ? query.OrderByDescending(c => c.CreatedAt) : query.OrderBy(c => c.CreatedAt)
     };
 
     var items = await query
@@ -221,23 +207,16 @@ public async Task<CakeCategoryResponse> UpdateCakeCategoryAsync(Guid id, UpdateC
     (`Gets the details of a cake category by id. Requires Organization role.`).
   - KHÔNG viết dài thêm chi tiết nghiệp vụ hay các trường hợp lỗi / status code.
   - Khi đổi logic/quyền của API phải cập nhật lại `[Authorize(Roles = ...)]` **và** câu cuối `Description` cho khớp.
-- Action phân trang nhận tham số `[FromQuery]` cùng thứ tự với interface, default:
-  `isDescending = true`, `page = 1`, `pageSize = 10`, filter `= null`.
+- Action phân trang nhận một tham số `[FromQuery] {Entity}ListQuery filter`. Giá trị mặc định nằm trong `ListQuery`.
 
 ```csharp
 [HttpGet]
 [SwaggerOperation(
     Summary = "Get paginated list of cake categories",
     Description = "Gets a paginated list of cake categories with search, filter and sort.")]
-public async Task<IActionResult> GetAll(
-    [FromQuery] string? search,
-    [FromQuery] string? sortBy,
-    [FromQuery] bool isDescending = true,
-    [FromQuery] int page = 1,
-    [FromQuery] int pageSize = 10,
-    [FromQuery] CakeCategoryStatus? status = null)
+public async Task<IActionResult> GetAll([FromQuery] CakeCategoryListQuery filter)
 {
-    var result = await _cakeCategoryService.GetAllAsync(search, sortBy, isDescending, page, pageSize, status);
+    var result = await _cakeCategoryService.GetAllAsync(filter);
     return Ok(ApiResult<Pagination<CakeCategoryResponse>>.Success(result));
 }
 ```
