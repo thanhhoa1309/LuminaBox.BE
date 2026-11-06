@@ -4,6 +4,7 @@ using LuminaBox.Application.Dtos.Payment;
 using LuminaBox.Application.Exceptions;
 using LuminaBox.Application.Interface;
 using LuminaBox.Application.Utils;
+using LuminaBox.Domain.Enums;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace LuminaBox.Api.Controllers
@@ -77,7 +78,8 @@ namespace LuminaBox.Api.Controllers
             try
             {
                 var result = await _paymentService.CompleteCheckoutBySessionAsync(sessionId);
-                return Redirect($"{FrontendUrl}/payment/result?status=success&orderId={result.OrderId}");
+                var status = result.Status == PaymentStatus.Refunded ? "refunded" : "success";
+                return Redirect($"{FrontendUrl}/payment/result?status={status}&orderId={result.OrderId}");
             }
             catch (AppException)
             {

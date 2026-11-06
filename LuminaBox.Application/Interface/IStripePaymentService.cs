@@ -19,6 +19,9 @@ namespace LuminaBox.Application.Interface
         /// </summary>
         Task<(string paymentStatus, string? paymentIntentId)> GetCheckoutSessionAsync(string sessionId);
 
+        /// <summary>Closes the checkout link. Returns the session state, which is still "paid" if the buyer got there first.</summary>
+        Task<(string paymentStatus, string? paymentIntentId)> ExpireCheckoutSessionAsync(string sessionId);
+
         Task RefundPaymentAsync(string paymentIntentId);
     }
 }

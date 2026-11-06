@@ -544,6 +544,10 @@ namespace LuminaBox.Application.Services
             {
                 await _paymentService.TryRefundOrderPaymentAsync(order.Id);
             }
+            else
+            {
+                await _paymentService.CloseCheckoutSessionAsync(order.Id);
+            }
 
                 await _unitOfWork.SaveChangesAsync();
                 return true;
@@ -644,6 +648,10 @@ namespace LuminaBox.Application.Services
             {
                 await _paymentService.TryRefundOrderPaymentAsync(order.Id);
             }
+            else
+            {
+                await _paymentService.CloseCheckoutSessionAsync(order.Id);
+            }
 
                 await _unitOfWork.SaveChangesAsync();
                 return true;
@@ -712,6 +720,7 @@ namespace LuminaBox.Application.Services
 
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
+                .Include(o => o.Payment)
                 .FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw ErrorHelper.NotFound("Order not found.");
 
@@ -727,6 +736,13 @@ namespace LuminaBox.Application.Services
                 order.Status = OrderStatus.Delivered;
                 order.DeliveredAt = now;
                 await _unitOfWork.Orders.Update(order);
+
+                if (order.Payment is { Method: PaymentMethod.CashOnDelivery, Status: PaymentStatus.Pending })
+                {
+                    order.Payment.Status = PaymentStatus.Success;
+                    order.Payment.PaidAt = now;
+                    await _unitOfWork.Payments.Update(order.Payment);
+                }
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
