@@ -1067,6 +1067,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ProductItemId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -1084,7 +1087,9 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.HasIndex("OrderItemId", "ProductId", "CategoryId", "FillingId")
+                    b.HasIndex("ProductItemId");
+
+                    b.HasIndex("OrderItemId", "ProductItemId")
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
@@ -1134,6 +1139,9 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("ProductId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ProductItemId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -1162,6 +1170,8 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("ProductItemId");
 
                     b.ToTable("OrderItems", t =>
                         {
@@ -1912,6 +1922,12 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BoxItemId")
@@ -1967,6 +1983,12 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -2356,6 +2378,12 @@ namespace LuminaBox.Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -2760,6 +2788,11 @@ namespace LuminaBox.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
+                        .WithMany()
+                        .HasForeignKey("ProductItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
 
                     b.Navigation("Filling");
@@ -2767,6 +2800,8 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("OrderItem");
 
                     b.Navigation("Product");
+
+                    b.Navigation("ProductItem");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.OrderItem", b =>
@@ -2797,6 +2832,11 @@ namespace LuminaBox.Infrastructure.Migrations
                         .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("LuminaBox.Domain.Entities.ProductItem", "ProductItem")
+                        .WithMany()
+                        .HasForeignKey("ProductItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("BoxItem");
 
                     b.Navigation("Category");
@@ -2806,6 +2846,8 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.Navigation("Order");
 
                     b.Navigation("Product");
+
+                    b.Navigation("ProductItem");
                 });
 
             modelBuilder.Entity("LuminaBox.Domain.Entities.OrderStatusHistory", b =>

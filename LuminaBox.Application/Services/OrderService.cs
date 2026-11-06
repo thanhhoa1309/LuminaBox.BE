@@ -13,6 +13,8 @@ namespace LuminaBox.Application.Services
 {
     public class OrderService : IOrderService
     {
+        private const int MaxPlaceOrderAttempts = 6;
+
         private readonly IUnitOfWork _unitOfWork;
         private readonly IClaimsService _claimsService;
         private readonly ICurrentTime _currentTime;
@@ -21,6 +23,7 @@ namespace LuminaBox.Application.Services
         private readonly IPaymentService _paymentService;
         private readonly IWalletService _walletService;
         private readonly INotificationService _notificationService;
+        private readonly IOrderStockService _orderStockService;
 
         public OrderService(
             IUnitOfWork unitOfWork,
@@ -30,7 +33,8 @@ namespace LuminaBox.Application.Services
             IVoucherService voucherService,
             IPaymentService paymentService,
             IWalletService walletService,
-            INotificationService notificationService)
+            INotificationService notificationService,
+            IOrderStockService orderStockService)
         {
             _unitOfWork = unitOfWork;
             _claimsService = claimsService;
@@ -40,6 +44,7 @@ namespace LuminaBox.Application.Services
             _paymentService = paymentService;
             _walletService = walletService;
             _notificationService = notificationService;
+            _orderStockService = orderStockService;
         }
 
         public async Task<List<OrderResponse>> CreateOrderAsync(CreateOrderRequest request)
@@ -95,9 +100,7 @@ namespace LuminaBox.Application.Services
                     requestedItems.Add(new CreateOrderItemRequest
                     {
                         ItemType = OrderItemType.Product,
-                        ProductId = pi.ProductId,
-                        CategoryId = pi.CategoryId,
-                        FillingId = pi.FillingId,
+                        ProductItemId = pi.Id,
                         Quantity = ci.Quantity,
                         StallId = ci.StallId
                     });
@@ -462,6 +465,7 @@ namespace LuminaBox.Application.Services
 
             await _notificationService.SendAsync(
                 NotificationCatalog.OrderConfirmed(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
+            await _unitOfWork.SaveChangesAsync();
 
             return await GetOrderByDetail(order.Id);
         }
@@ -501,11 +505,6 @@ namespace LuminaBox.Application.Services
                                order.Payment.Method == PaymentMethod.Stripe &&
                                order.Payment.Status == PaymentStatus.Success;
 
-            if (isPaidStripe)
-            {
-                await _paymentService.RefundOrderPaymentAsync(order.Id);
-            }
-
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
                 var previousStatus = order.Status;
@@ -520,12 +519,16 @@ namespace LuminaBox.Application.Services
                     await _unitOfWork.Payments.Update(order.Payment);
                 }
 
-                if (!isPaidStripe)
+                if (isPaidStripe)
+                {
+                    await _walletService.ReverseOrderEarningAsync(order.Id);
+                }
+                else
                 {
                     await _voucherService.RestoreOrderVouchersAsync(order, now);
                 }
 
-                await RestoreBoxStockAsync(order);
+                await _orderStockService.RestoreAsync(order.Id);
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
@@ -535,6 +538,12 @@ namespace LuminaBox.Application.Services
                     ChangedBy = userId,
                     ChangedAt = now
                 });
+
+            // Runs only after the cancellation is committed, so a failed save can never leave a refunded order open
+            if (isPaidStripe)
+            {
+                await _paymentService.TryRefundOrderPaymentAsync(order.Id);
+            }
 
                 await _unitOfWork.SaveChangesAsync();
                 return true;
@@ -549,6 +558,7 @@ namespace LuminaBox.Application.Services
                     order.Organizer.BrandName,
                     cancelledByOrganizer: true,
                     reason: request.Reason));
+            await _unitOfWork.SaveChangesAsync();
 
             return await GetOrderByDetail(order.Id);
         }
@@ -595,11 +605,6 @@ namespace LuminaBox.Application.Services
                                order.Payment.Method == PaymentMethod.Stripe &&
                                order.Payment.Status == PaymentStatus.Success;
 
-            if (isPaidStripe)
-            {
-                await _paymentService.RefundOrderPaymentAsync(order.Id);
-            }
-
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
                 var previousStatus = order.Status;
@@ -614,12 +619,16 @@ namespace LuminaBox.Application.Services
                     await _unitOfWork.Payments.Update(order.Payment);
                 }
 
-                if (!isPaidStripe)
+                if (isPaidStripe)
+                {
+                    await _walletService.ReverseOrderEarningAsync(order.Id);
+                }
+                else
                 {
                     await _voucherService.RestoreOrderVouchersAsync(order, now);
                 }
 
-                await RestoreBoxStockAsync(order);
+                await _orderStockService.RestoreAsync(order.Id);
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                 {
@@ -629,6 +638,12 @@ namespace LuminaBox.Application.Services
                     ChangedBy = userId,
                     ChangedAt = now
                 });
+
+            // Runs only after the cancellation is committed, so a failed save can never leave a refunded order open
+            if (isPaidStripe)
+            {
+                await _paymentService.TryRefundOrderPaymentAsync(order.Id);
+            }
 
                 await _unitOfWork.SaveChangesAsync();
                 return true;
@@ -643,6 +658,7 @@ namespace LuminaBox.Application.Services
                     order.Organizer.BrandName,
                     cancelledByOrganizer: isOrganizer,
                     reason: request.Reason));
+            await _unitOfWork.SaveChangesAsync();
 
             return await GetOrderByDetail(order.Id);
         }
@@ -684,6 +700,7 @@ namespace LuminaBox.Application.Services
 
             await _notificationService.SendAsync(
                 NotificationCatalog.OrderDelivering(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
+            await _unitOfWork.SaveChangesAsync();
 
             return await GetOrderByDetail(order.Id);
         }
@@ -726,11 +743,43 @@ namespace LuminaBox.Application.Services
 
             await _notificationService.SendAsync(
                 NotificationCatalog.OrderDelivered(order.UserId, order.Id, order.OrderCode, order.Organizer.BrandName));
+            await _unitOfWork.SaveChangesAsync();
 
             return await GetOrderByDetail(order.Id);
         }
 
+        // Stock rows are versioned: when two buyers collide, the loser re-reads the stock and tries again
         private async Task<List<OrderResponse>> CreateOrdersInternalAsync(
+            Guid userId,
+            PaymentMethod paymentMethod,
+            string? note,
+            List<CreateOrderItemRequest> requestedItems,
+            List<Guid>? requestedVoucherIds,
+            List<CartItem>? cartItemsToRemove,
+            Dictionary<int, decimal>? cartSnapshotPrices)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await PlaceOrdersAsync(
+                        userId,
+                        paymentMethod,
+                        note,
+                        requestedItems,
+                        requestedVoucherIds,
+                        cartItemsToRemove,
+                        cartSnapshotPrices);
+                }
+                catch (DbUpdateConcurrencyException) when (attempt < MaxPlaceOrderAttempts)
+                {
+                    // A random wait keeps colliding buyers from retrying in lockstep
+                    await Task.Delay(Random.Shared.Next(30, 120) * attempt);
+                }
+            }
+        }
+
+        private async Task<List<OrderResponse>> PlaceOrdersAsync(
             Guid userId,
             PaymentMethod paymentMethod,
             string? note,
@@ -771,10 +820,7 @@ namespace LuminaBox.Application.Services
 
                 if (reqItem.ItemType == OrderItemType.Product)
                 {
-                    var productItem = await ResolveProductItemAsync(
-                        reqItem.ProductId!.Value,
-                        reqItem.CategoryId!.Value,
-                        reqItem.FillingId!.Value);
+                    var productItem = await ResolveProductItemAsync(reqItem.ProductItemId!.Value);
 
                     var product = productItem.Product;
 
@@ -861,10 +907,7 @@ namespace LuminaBox.Application.Services
 
                     foreach (var sel in selections)
                     {
-                        var selProductItem = await ResolveProductItemAsync(
-                            sel.ProductId,
-                            sel.CategoryId,
-                            sel.FillingId);
+                        var selProductItem = await ResolveProductItemAsync(sel.ProductItemId);
 
                         if (selProductItem.Product.OrganizerId != box.OrganizerId ||
                             selProductItem.Product.Status != ProductStatus.Active)
@@ -1091,6 +1134,7 @@ namespace LuminaBox.Application.Services
                         {
                             OrderId = order.Id,
                             ItemType = line.ItemType,
+                            ProductItemId = line.ProductItemId,
                             ProductId = line.ProductId,
                             BoxItemId = line.BoxItemId,
                             CategoryId = line.CategoryId,
@@ -1105,10 +1149,11 @@ namespace LuminaBox.Application.Services
                         if (line.ItemType == OrderItemType.Box && line.BoxSelections is not null)
                         {
                             var boxSelections = line.BoxSelections
-                                .GroupBy(bs => new { bs.ProductId, bs.CategoryId, bs.FillingId })
+                                .GroupBy(bs => new { bs.ProductItemId, bs.ProductId, bs.CategoryId, bs.FillingId })
                                 .Select(g => new OrderBoxSelection
                                 {
                                     OrderItemId = orderItem.Id,
+                                    ProductItemId = g.Key.ProductItemId,
                                     ProductId = g.Key.ProductId,
                                     CategoryId = g.Key.CategoryId,
                                     FillingId = g.Key.FillingId,
@@ -1180,6 +1225,8 @@ namespace LuminaBox.Application.Services
                     NotificationCatalog.OrderCreated(userId, item.OrganizerUserId, item.OrderId, item.OrderCode, item.BrandName));
             }
 
+            await _unitOfWork.SaveChangesAsync();
+
             var responses = new List<OrderResponse>();
             foreach (var orderId in createdOrderIds)
             {
@@ -1189,22 +1236,15 @@ namespace LuminaBox.Application.Services
             return responses;
         }
 
-        private async Task<ProductItem> ResolveProductItemAsync(
-            Guid productId,
-            Guid categoryId,
-            Guid fillingId)
+        private async Task<ProductItem> ResolveProductItemAsync(Guid productItemId)
         {
             return await _unitOfWork.ProductItems.GetQueryable()
                 .Include(pi => pi.Product)
                     .ThenInclude(p => p.Organizer)
                 .Include(pi => pi.PriceTiers)
                 .Include(pi => pi.Stocks)
-                .OrderBy(pi => pi.CreatedAt)
-                .FirstOrDefaultAsync(pi => pi.ProductId == productId
-                                        && pi.CategoryId == categoryId
-                                        && pi.FillingId == fillingId)
-                ?? throw ErrorHelper.NotFound(
-                    $"Selected category and filling combination is not available for product '{productId}'.");
+                .FirstOrDefaultAsync(pi => pi.Id == productItemId)
+                ?? throw ErrorHelper.NotFound($"Product item '{productItemId}' not found.");
         }
 
         private async Task EnsureOnlineApprovedAsync(Guid organizerId, string brandName)
@@ -1275,27 +1315,6 @@ namespace LuminaBox.Application.Services
                 return activeStocks[0];
 
             throw ErrorHelper.BadRequest($"StallId is required for box '{boxName}'.");
-        }
-
-        private async Task RestoreBoxStockAsync(Order order)
-        {
-            var boxCounts = order.Items
-                .Where(i => i.ItemType == OrderItemType.Box && i.BoxItemId.HasValue)
-                .GroupBy(i => i.BoxItemId!.Value)
-                .Select(g => new { BoxItemId = g.Key, Quantity = g.Sum(x => x.Quantity) })
-                .ToList();
-
-            foreach (var boxCount in boxCounts)
-            {
-                var stockRow = await _unitOfWork.StallBoxItems.GetQueryable()
-                    .FirstOrDefaultAsync(s => s.BoxItemId == boxCount.BoxItemId && s.StallId == order.StallId);
-
-                if (stockRow is not null)
-                {
-                    stockRow.StockQuantity += boxCount.Quantity;
-                    await _unitOfWork.StallBoxItems.Update(stockRow);
-                }
-            }
         }
 
         private sealed class ResolvedBoxSelection

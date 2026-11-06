@@ -21,6 +21,7 @@ namespace LuminaBox.Application.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<PaymentService> _logger;
         private readonly IWalletService _walletService;
+        private readonly IOrderStockService _orderStockService;
 
         public PaymentService(
             IUnitOfWork unitOfWork,
@@ -29,7 +30,8 @@ namespace LuminaBox.Application.Services
             IStripePaymentService stripe,
             IConfiguration configuration,
             ILogger<PaymentService> logger,
-            IWalletService walletService)
+            IWalletService walletService,
+            IOrderStockService orderStockService)
         {
             _unitOfWork = unitOfWork;
             _claimsService = claimsService;
@@ -38,6 +40,7 @@ namespace LuminaBox.Application.Services
             _configuration = configuration;
             _logger = logger;
             _walletService = walletService;
+            _orderStockService = orderStockService;
         }
 
         public async Task<CheckoutResponse> CreateCheckoutAsync(Guid orderId)
@@ -318,6 +321,35 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.SaveChangesAsync();
         }
 
+        public async Task TryRefundOrderPaymentAsync(Guid orderId)
+        {
+            try
+            {
+                await RefundOrderPaymentAsync(orderId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Refund] Refund failed for order {OrderId}. It will be retried.", orderId);
+            }
+        }
+
+        public async Task<int> RetryPendingRefundsAsync()
+        {
+            var orderIds = await _unitOfWork.Orders.GetQueryable()
+                .AsNoTracking()
+                .Where(o => o.Status == OrderStatus.Cancelled
+                    && o.Payment != null
+                    && o.Payment.Method == PaymentMethod.Stripe
+                    && o.Payment.Status == PaymentStatus.Success)
+                .Select(o => o.Id)
+                .ToListAsync();
+
+            foreach (var orderId in orderIds)
+                await TryRefundOrderPaymentAsync(orderId);
+
+            return orderIds.Count;
+        }
+
         private async Task HandlePaymentSuccessAsync(Payment payment, string transactionId)
         {
             if (payment.Status == PaymentStatus.Success)
@@ -398,6 +430,7 @@ namespace LuminaBox.Application.Services
                     order.CancelReason = orderCancelReason;
 
                     await RestoreVouchersForOrderAsync(order.Id, now);
+                    await _orderStockService.RestoreAsync(order.Id);
                     await _unitOfWork.Orders.Update(order);
                     await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                     {

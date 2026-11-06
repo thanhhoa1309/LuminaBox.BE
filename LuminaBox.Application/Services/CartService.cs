@@ -32,11 +32,16 @@ namespace LuminaBox.Application.Services
         {
             var userId = _claimsService.GetRequiredUserId();
 
-            var product = await _unitOfWork.Products.GetQueryable()
+            var productItem = await _unitOfWork.ProductItems.GetQueryable()
                 .AsNoTracking()
-                .Include(p => p.Organizer)
-                .FirstOrDefaultAsync(p => p.Id == request.ProductId)
-                ?? throw ErrorHelper.NotFound("Product not found.");
+                .Include(pi => pi.Product)
+                    .ThenInclude(p => p.Organizer)
+                .Include(pi => pi.PriceTiers)
+                .Include(pi => pi.Stocks)
+                .FirstOrDefaultAsync(pi => pi.Id == request.ProductItemId)
+                ?? throw ErrorHelper.NotFound("Product item not found.");
+
+            var product = productItem.Product;
 
             if (product.Status != ProductStatus.Active)
                 throw ErrorHelper.BadRequest("Product is not active for sale.");
@@ -45,16 +50,6 @@ namespace LuminaBox.Application.Services
                 throw ErrorHelper.Conflict("Organizer is currently suspended.");
 
             await EnsureOnlineApprovedAsync(product.OrganizerId);
-
-            var productItem = await _unitOfWork.ProductItems.GetQueryable()
-                .AsNoTracking()
-                .Include(pi => pi.PriceTiers)
-                .Include(pi => pi.Stocks)
-                .OrderBy(pi => pi.CreatedAt)
-                .FirstOrDefaultAsync(pi => pi.ProductId == request.ProductId
-                                        && pi.CategoryId == request.CategoryId
-                                        && pi.FillingId == request.FillingId)
-                ?? throw ErrorHelper.NotFound("Selected category and filling combination is not available for this product.");
 
             var activeStocks = productItem.Stocks.Where(s => s.IsActive).ToList();
             var selectedStock = ResolveProductStock(activeStocks, request.StallId);
@@ -194,19 +189,18 @@ namespace LuminaBox.Application.Services
                     ?? await _unitOfWork.ProductItems.GetByIdAsync(cartItem.ProductItemId!.Value)
                     ?? throw ErrorHelper.NotFound("Product item not found.");
 
-                var targetCategoryId = request.CategoryId ?? currentProductItem.CategoryId;
-                var targetFillingId = request.FillingId ?? currentProductItem.FillingId;
+                var targetProductItemId = request.ProductItemId ?? currentProductItem.Id;
 
                 var productItem = await _unitOfWork.ProductItems.GetQueryable()
                     .AsNoTracking()
                     .Include(pi => pi.Product)
                     .Include(pi => pi.PriceTiers)
                     .Include(pi => pi.Stocks)
-                    .OrderBy(pi => pi.CreatedAt)
-                    .FirstOrDefaultAsync(pi => pi.ProductId == currentProductItem.ProductId
-                                            && pi.CategoryId == targetCategoryId
-                                            && pi.FillingId == targetFillingId)
-                    ?? throw ErrorHelper.NotFound("Selected category and filling combination is not available for this product.");
+                    .FirstOrDefaultAsync(pi => pi.Id == targetProductItemId)
+                    ?? throw ErrorHelper.NotFound("Product item not found.");
+
+                if (productItem.ProductId != currentProductItem.ProductId)
+                    throw ErrorHelper.BadRequest("The new variant must belong to the same product.");
 
                 if (productItem.Product.Status != ProductStatus.Active)
                     throw ErrorHelper.BadRequest("Product is not active for sale.");
@@ -215,7 +209,7 @@ namespace LuminaBox.Application.Services
                     .FirstOrDefault(s => s.StallId == cartItem.StallId && s.IsActive)
                     ?? throw ErrorHelper.BadRequest("Selected product item is not available at the current stall.");
 
-                if (targetCategoryId != currentProductItem.CategoryId || targetFillingId != currentProductItem.FillingId)
+                if (productItem.Id != currentProductItem.Id)
                 {
                     var duplicate = await _unitOfWork.CartItems.GetQueryable()
                         .FirstOrDefaultAsync(ci => ci.CartId == cart.Id
@@ -253,8 +247,8 @@ namespace LuminaBox.Application.Services
             }
             else
             {
-                if (request.CategoryId.HasValue || request.FillingId.HasValue)
-                    throw ErrorHelper.BadRequest("Cannot update CategoryId or FillingId for a Box item in cart.");
+                if (request.ProductItemId.HasValue)
+                    throw ErrorHelper.BadRequest("Cannot change the variant of a Box item in cart.");
 
                 if (request.Quantity.HasValue)
                 {
@@ -406,6 +400,7 @@ namespace LuminaBox.Application.Services
                     StallId = ci.StallId,
                     StallCode = ci.Stall != null ? ci.Stall.Code : null,
                     StallName = ci.Stall != null ? ci.Stall.Name : null,
+                    ProductItemId = ci.ProductItemId,
                     ProductId = ci.ProductItem != null ? ci.ProductItem.ProductId : null,
                     ProductName = ci.ProductItem != null ? ci.ProductItem.Product.Name : null,
                     ProductItemName = ci.ProductItem != null ? ci.ProductItem.Name : null,

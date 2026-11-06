@@ -35,6 +35,11 @@ namespace LuminaBox.Infrastructure.BackgroundJobs
 
                     if (count > 0)
                         _logger.LogInformation("Expired {Count} unpaid Stripe payment(s).", count);
+
+                    var refunds = await paymentService.RetryPendingRefundsAsync();
+
+                    if (refunds > 0)
+                        _logger.LogInformation("Retried {Count} pending Stripe refund(s).", refunds);
                 }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {

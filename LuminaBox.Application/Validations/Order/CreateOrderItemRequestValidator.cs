@@ -15,16 +15,8 @@ namespace LuminaBox.Application.Validations.Order
                 .GreaterThan(0).WithMessage("Item quantity must be greater than 0.")
                 .LessThanOrEqualTo(1000).WithMessage("Item quantity must not exceed 1000.");
 
-            RuleFor(i => i.ProductId)
-                .NotEmpty().WithMessage("ProductId is required for Product item.")
-                .When(i => i.ItemType == OrderItemType.Product);
-
-            RuleFor(i => i.CategoryId)
-                .NotEmpty().WithMessage("CategoryId is required for Product item.")
-                .When(i => i.ItemType == OrderItemType.Product);
-
-            RuleFor(i => i.FillingId)
-                .NotEmpty().WithMessage("FillingId is required for Product item.")
+            RuleFor(i => i.ProductItemId)
+                .NotEmpty().WithMessage("ProductItemId is required for Product item.")
                 .When(i => i.ItemType == OrderItemType.Product);
 
             RuleFor(i => i.BoxItemId)

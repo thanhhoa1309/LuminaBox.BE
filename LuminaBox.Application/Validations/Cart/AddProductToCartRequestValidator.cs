@@ -7,14 +7,8 @@ namespace LuminaBox.Application.Validations.Cart
     {
         public AddProductToCartRequestValidator()
         {
-            RuleFor(x => x.ProductId)
-                .NotEmpty().WithMessage("ProductId is required.");
-
-            RuleFor(x => x.CategoryId)
-                .NotEmpty().WithMessage("CategoryId is required.");
-
-            RuleFor(x => x.FillingId)
-                .NotEmpty().WithMessage("FillingId is required.");
+            RuleFor(x => x.ProductItemId)
+                .NotEmpty().WithMessage("ProductItemId is required.");
 
             RuleFor(x => x.Quantity)
                 .GreaterThan(0).WithMessage("Quantity must be greater than 0.")

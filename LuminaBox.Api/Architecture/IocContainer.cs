@@ -103,6 +103,7 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IVoucherService, VoucherService>();
             services.AddScoped<ICartService, CartService>();
             services.AddScoped<IOrderService, OrderService>();
+            services.AddScoped<IOrderStockService, OrderStockService>();
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<IWalletService, WalletService>();
             services.AddScoped<ISeedService, SeedService>();

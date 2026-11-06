@@ -12,6 +12,9 @@ namespace LuminaBox.Domain.Entities
         [MaxLength(3)]
         public string Currency { get; set; } = "VND";
 
+        // Maps to the PostgreSQL xmin system column; used as the optimistic concurrency token
+        public uint Version { get; set; }
+
         public ICollection<WalletTransaction> Transactions { get; set; } = new List<WalletTransaction>();
     }
 }

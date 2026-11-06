@@ -109,10 +109,9 @@ namespace LuminaBox.Infrastructure.Service
             _logger.LogInformation("[Stripe] Refunding PaymentIntent {PaymentIntentId}", paymentIntentId);
 
             var service = new RefundService();
-            await service.CreateAsync(new RefundCreateOptions
-            {
-                PaymentIntent = paymentIntentId
-            });
+            await service.CreateAsync(
+                new RefundCreateOptions { PaymentIntent = paymentIntentId },
+                new RequestOptions { IdempotencyKey = $"refund-{paymentIntentId}" });
         }
     }
 }

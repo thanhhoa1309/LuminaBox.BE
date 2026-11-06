@@ -7,20 +7,23 @@ namespace LuminaBox.Application.Services
     {
         private static readonly (string Name, string Description)[] CakeCategorySeeds =
         {
-            ("Bánh Nướng", "Traditional baked mooncakes"),
-            ("Bánh Dẻo", "Soft snow-skin style cakes"),
-            ("Bánh Hiện Đại", "Modern flavored mooncakes"),
-            ("Mini Cake", "Bite-size cakes for gifts"),
-            ("Bánh Tinh Tế", "Premium handcrafted cakes")
+            ("Bánh Nướng", "Bánh nướng truyền thống"),
+            ("Bánh Dẻo", "Bánh dẻo vỏ mềm"),
+            ("Bánh Hiện Đại", "Bánh trung thu vị mới"),
+            ("Mini Cake", "Bánh nhỏ làm quà"),
+            ("Bánh Tinh Tế", "Dòng thủ công cao cấp")
         };
 
         private static readonly (string Name, string Description)[] FillingSeeds =
         {
-            ("Đậu xanh", "Classic mung bean filling"),
-            ("Hạt sen", "Lotus seed filling"),
-            ("Thập cẩm", "Mixed savory filling"),
-            ("Chocolate", "Rich chocolate filling"),
-            ("Trà xanh", "Matcha green tea filling")
+            ("Đậu xanh", "Nhân đậu xanh truyền thống"),
+            ("Hạt sen", "Nhân hạt sen bùi nhẹ"),
+            ("Thập cẩm", "Nhân thập cẩm mặn ngọt"),
+            ("Chocolate", "Nhân chocolate đậm vị"),
+            ("Trà xanh", "Nhân trà xanh matcha"),
+            ("Sầu riêng", "Nhân sầu riêng thơm béo"),
+            ("Khoai môn", "Nhân khoai môn tím"),
+            ("Trứng muối", "Nhân trứng muối mặn bùi")
         };
 
         private async Task SeedCakeCategoriesAsync()

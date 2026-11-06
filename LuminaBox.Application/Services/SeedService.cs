@@ -27,10 +27,12 @@ namespace LuminaBox.Application.Services
             await SeedFillingsAsync();
             await SeedStallsAsync();
             await SeedOrganizersAsync();
+            await SeedSalesAccessAsync();
             await SeedProductsAsync();
             await SeedBoxItemsAsync();
             await SeedVouchersAsync();
             await SeedEventsAsync();
+            await SeedSampleOrdersAsync();
 
             _logger.LogInformation("Finished LuminaBox seed");
         }

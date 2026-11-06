@@ -1,9 +1,7 @@
 @LuminaBox.Api_HostAddress = http://localhost:5155
 @accessToken = 
 @refreshToken = 
-@productId = 00000000-0000-0000-0000-000000000000
-@categoryId = 00000000-0000-0000-0000-000000000000
-@fillingId = 00000000-0000-0000-0000-000000000000
+@productItemId = 00000000-0000-0000-0000-000000000000
 @boxItemId = 00000000-0000-0000-0000-000000000000
 @cartItemId = 00000000-0000-0000-0000-000000000000
 @voucherId = 00000000-0000-0000-0000-000000000000
@@ -132,9 +130,7 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "productId": "{{productId}}",
-  "categoryId": "{{categoryId}}",
-  "fillingId": "{{fillingId}}",
+  "productItemId": "{{productItemId}}",
   "quantity": 2
 }
 
@@ -155,8 +151,7 @@ Content-Type: application/json
 
 {
   "quantity": 3,
-  "categoryId": "{{categoryId}}",
-  "fillingId": "{{fillingId}}"
+  "productItemId": "{{productItemId}}"
 }
 
 ### Remove cart item
@@ -181,9 +176,7 @@ Content-Type: application/json
   "items": [
     {
       "itemType": "Product",
-      "productId": "{{productId}}",
-      "categoryId": "{{categoryId}}",
-      "fillingId": "{{fillingId}}",
+      "productItemId": "{{productItemId}}",
       "quantity": 2
     }
   ]

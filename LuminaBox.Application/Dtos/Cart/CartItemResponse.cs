@@ -11,6 +11,7 @@ namespace LuminaBox.Application.Dtos.Cart
         public Guid? StallId { get; set; }
         public string? StallCode { get; set; }
         public string? StallName { get; set; }
+        public Guid? ProductItemId { get; set; }
         public Guid? ProductId { get; set; }
         public string? ProductName { get; set; }
         public string? ProductItemName { get; set; }

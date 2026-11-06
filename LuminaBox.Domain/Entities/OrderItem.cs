@@ -13,6 +13,10 @@ namespace LuminaBox.Domain.Entities
         public Guid? ProductId { get; set; }
         public Product? Product { get; set; }
 
+        // The exact variant sold, needed to return stock; null for Box lines
+        public Guid? ProductItemId { get; set; }
+        public ProductItem? ProductItem { get; set; }
+
         public Guid? BoxItemId { get; set; }
         public BoxItem? BoxItem { get; set; }
 
