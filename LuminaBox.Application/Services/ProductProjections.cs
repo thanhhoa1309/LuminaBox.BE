@@ -36,6 +36,9 @@ namespace LuminaBox.Application.Services
                     Id = s.Id,
                     StallId = s.StallId,
                     StallName = s.Stall != null ? s.Stall.Name : null,
+                    StallAddress = s.Stall != null
+                        ? s.Stall.AddressLine + ", " + s.Stall.Ward.Name + ", " + s.Stall.Ward.District.Name + ", " + s.Stall.Ward.District.Province.Name
+                        : null,
                     StockQuantity = s.StockQuantity,
                     IsActive = s.IsActive
                 })
@@ -47,6 +50,8 @@ namespace LuminaBox.Application.Services
             Id = p.Id,
             OrganizerId = p.OrganizerId,
             OrganizerBrandName = p.Organizer.BrandName,
+            OrganizerBusinessInfo = p.Organizer.BusinessInfo,
+            OrganizerContactPhone = p.Organizer.ContactPhone,
             Name = p.Name,
             Description = p.Description,
             Status = p.Status,
