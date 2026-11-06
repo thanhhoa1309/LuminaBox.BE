@@ -1,5 +1,6 @@
 ﻿namespace LuminaBox.Domain.Entities
 {
+    // Kept only so old orders stay readable; new orders sell boxes on their own and never write this
     public class OrderBoxSelection : BaseEntity
     {
         public Guid OrderItemId { get; set; }
@@ -17,7 +18,6 @@
         public Guid FillingId { get; set; }
         public Filling Filling { get; set; } = null!;
 
-        // Sum of quantities in one box line must equal BoxItem.Capacity
         public int Quantity { get; set; }
     }
 }

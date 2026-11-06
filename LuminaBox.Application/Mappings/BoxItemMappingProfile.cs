@@ -23,12 +23,6 @@ namespace LuminaBox.Application.Mappings
                 .ForMember(d => d.PriceTiers, o => o.MapFrom(s => s.PriceTiers.OrderBy(t => t.MinQuantity)))
                 .ForMember(d => d.Stocks, o => o.MapFrom(s => s.Stocks.OrderBy(i => i.StallId)));
 
-            CreateMap<ProductItem, BoxAvailableProductResponse>()
-                .ForMember(d => d.ThumbnailUrl, o => o.MapFrom(s => s.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()));
-
-            CreateMap<StallProductItem, BoxAvailableProductResponse>()
-                .IncludeMembers(s => s.ProductItem);
-
             CreateMap<CreateBoxItemRequest, BoxItem>(MemberList.Source)
                 .ForMember(d => d.Images, o => o.MapFrom(s => s.ImageUrls.Select((url, index) => new BoxItemImage { Url = url.Trim(), SortOrder = index })))
                 .ForSourceMember(s => s.ImageUrls, o => o.DoNotValidate())

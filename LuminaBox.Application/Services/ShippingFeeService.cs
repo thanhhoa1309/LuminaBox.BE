@@ -128,7 +128,6 @@ namespace LuminaBox.Application.Services
         private async Task<Package> BuildPackageAsync(ShippingFeeRequest request)
         {
             var itemIds = request.Items
-                .Concat(request.Boxes.SelectMany(b => b.Selections))
                 .Select(i => i.ProductItemId)
                 .Distinct()
                 .ToList();
@@ -147,7 +146,7 @@ namespace LuminaBox.Application.Services
             var boxes = await _unitOfWork.BoxItems.GetQueryable()
                 .AsNoTracking()
                 .Where(b => boxIds.Contains(b.Id) && b.OrganizerId == request.OrganizerId)
-                .Select(b => new { b.Id, b.Capacity, b.Weight, b.LengthCm, b.WidthCm, b.HeightCm })
+                .Select(b => new { b.Id, b.Weight, b.LengthCm, b.WidthCm, b.HeightCm })
                 .ToDictionaryAsync(b => b.Id);
 
             if (boxes.Count != boxIds.Count)
@@ -164,12 +163,7 @@ namespace LuminaBox.Application.Services
             foreach (var line in request.Boxes)
             {
                 var box = boxes[line.BoxItemId];
-
-                if (line.Selections.Sum(s => s.Quantity) != box.Capacity)
-                    throw ErrorHelper.BadRequest("The cakes must fill the box exactly.", "E9.1");
-
-                var cakesWeight = line.Selections.Sum(s => items[s.ProductItemId].Weight * s.Quantity);
-                package.Add(box.Weight + cakesWeight, box.LengthCm, box.WidthCm, box.HeightCm, 1);
+                package.Add(box.Weight, box.LengthCm, box.WidthCm, box.HeightCm, line.Quantity);
             }
 
             return package;

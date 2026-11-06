@@ -7,7 +7,6 @@ namespace LuminaBox.Application.Dtos.Order
         public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Stripe;
         public string? Note { get; set; }
         public List<Guid> CartItemIds { get; set; } = new();
-        public List<OrderFromCartBoxSelectionRequest>? BoxItems { get; set; }
         public List<Guid>? VoucherIds { get; set; }
     }
 }

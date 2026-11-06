@@ -22,14 +22,6 @@ namespace LuminaBox.Application.Validations.Order
             RuleFor(i => i.BoxItemId)
                 .NotEmpty().WithMessage("BoxItemId is required for Box item.")
                 .When(i => i.ItemType == OrderItemType.Box);
-
-            RuleFor(i => i.Selections)
-                .NotEmpty().WithMessage("Selections are required for Box item.")
-                .When(i => i.ItemType == OrderItemType.Box);
-
-            RuleForEach(i => i.Selections)
-                .SetValidator(new CreateOrderBoxSelectionRequestValidator())
-                .When(i => i.Selections != null);
         }
     }
 }

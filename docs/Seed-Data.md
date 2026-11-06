@@ -30,7 +30,7 @@ Sau `sync-geo`, muốn đổi từ bộ này sang bộ kia thì gọi `DELETE ap
 Dữ liệu gồm:
 
 - 6 gian hàng có tọa độ
-- 12 sản phẩm, 23 biến thể, 6 hộp combo
+- 12 sản phẩm, 23 biến thể, 6 hộp bán riêng
 - 8 voucher: `LUMINA10`, `WELCOME50K`, `TRUNGTHU30K`, `MOON15`, `LUNA20K`, `TRANGVANG10`, `HOASEN25K`, `MAYTRA12`
 - 3 sự kiện
 - 10 đơn mẫu trải đủ trạng thái (`LBDEMO0001` đến `LBDEMO0010`)

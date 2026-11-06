@@ -80,10 +80,6 @@ namespace LuminaBox.Application.Services
             if (cartItems.Count != distinctCartItemIds.Count)
                 throw ErrorHelper.BadRequest("One or more selected cart items were not found in your cart.");
 
-            var boxSelectionMap = (request.BoxItems ?? new List<OrderFromCartBoxSelectionRequest>())
-                .GroupBy(b => b.CartItemId)
-                .ToDictionary(g => g.Key, g => g.First().Selections);
-
             var requestedItems = new List<CreateOrderItemRequest>();
             var cartSnapshotPrices = new Dictionary<int, decimal>();
 
@@ -108,16 +104,12 @@ namespace LuminaBox.Application.Services
                 }
                 else
                 {
-                    if (!boxSelectionMap.TryGetValue(ci.Id, out var selections) || selections.Count == 0)
-                        throw ErrorHelper.BadRequest($"Box selections are required for cart item '{ci.Id}'.");
-
                     requestedItems.Add(new CreateOrderItemRequest
                     {
                         ItemType = OrderItemType.Box,
                         BoxItemId = ci.BoxItemId,
                         Quantity = ci.Quantity,
-                        StallId = ci.StallId,
-                        Selections = selections
+                        StallId = ci.StallId
                     });
                     cartSnapshotPrices[idx] = ci.UnitPrice;
                 }
@@ -894,65 +886,22 @@ namespace LuminaBox.Application.Services
                     var boxStockKey = (box.Id, resolvedStallId);
                     requiredBoxStock[boxStockKey] = requiredBoxStock.GetValueOrDefault(boxStockKey) + reqItem.Quantity;
 
-                    var selections = reqItem.Selections ?? new List<CreateOrderBoxSelectionRequest>();
-                    var totalSelectionQty = selections.Sum(s => s.Quantity);
-                    if (totalSelectionQty != box.Capacity)
-                    {
-                        throw ErrorHelper.BadRequest(
-                            $"Total quantity of selections ({totalSelectionQty}) for box '{box.Name}' must equal box capacity ({box.Capacity}).");
-                    }
-
-                    var resolvedSelections = new List<ResolvedBoxSelection>();
-
-                    foreach (var sel in selections)
-                    {
-                        var selProductItem = await ResolveProductItemAsync(sel.ProductItemId);
-
-                        if (selProductItem.Product.OrganizerId != box.OrganizerId ||
-                            selProductItem.Product.Status != ProductStatus.Active)
-                        {
-                            throw ErrorHelper.BadRequest(
-                                $"Selected product item '{selProductItem.Name}' does not belong to an active product of organizer '{box.Organizer.BrandName}'.");
-                        }
-
-                        var selStock = selProductItem.Stocks.FirstOrDefault(s => s.StallId == resolvedStallId && s.IsActive)
-                            ?? throw ErrorHelper.BadRequest(
-                                $"Selected product item '{selProductItem.Name}' is not available at the same stall as box '{box.Name}'.");
-
-                        var prodStockKey = (selProductItem.Id, resolvedStallId);
-                        requiredProductStock[prodStockKey] =
-                            requiredProductStock.GetValueOrDefault(prodStockKey) + sel.Quantity * reqItem.Quantity;
-
-                        resolvedSelections.Add(new ResolvedBoxSelection
-                        {
-                            ProductItemId = selProductItem.Id,
-                            ProductId = selProductItem.ProductId,
-                            CategoryId = selProductItem.CategoryId,
-                            FillingId = selProductItem.FillingId,
-                            Quantity = sel.Quantity
-                        });
-                    }
-
                     var boxUnitPrice = hasCartSnapshotPrice
                         ? resolvedCartPrice
                         : CartService.ResolveUnitPrice(box.Price, box.PriceTiers, reqItem.Quantity);
 
-                    for (var i = 0; i < reqItem.Quantity; i++)
+                    preparedLines.Add(new PreparedOrderLine
                     {
-                        preparedLines.Add(new PreparedOrderLine
-                        {
-                            OrganizerId = box.OrganizerId,
-                            OrganizerUserId = box.Organizer.UserId,
-                            OrganizerBrandName = box.Organizer.BrandName,
-                            StallId = resolvedStallId,
-                            ItemType = OrderItemType.Box,
-                            BoxItemId = box.Id,
-                            Quantity = 1,
-                            UnitPrice = boxUnitPrice,
-                            Subtotal = boxUnitPrice,
-                            BoxSelections = resolvedSelections
-                        });
-                    }
+                        OrganizerId = box.OrganizerId,
+                        OrganizerUserId = box.Organizer.UserId,
+                        OrganizerBrandName = box.Organizer.BrandName,
+                        StallId = resolvedStallId,
+                        ItemType = OrderItemType.Box,
+                        BoxItemId = box.Id,
+                        Quantity = reqItem.Quantity,
+                        UnitPrice = boxUnitPrice,
+                        Subtotal = boxUnitPrice * reqItem.Quantity
+                    });
                 }
             }
 
@@ -1032,13 +981,7 @@ namespace LuminaBox.Application.Services
                             .Select(l => new ShippingBoxRequest
                             {
                                 BoxItemId = l.BoxItemId!.Value,
-                                Selections = (l.BoxSelections ?? new List<ResolvedBoxSelection>())
-                                    .Select(bs => new ShippingItemRequest
-                                    {
-                                        ProductItemId = bs.ProductItemId,
-                                        Quantity = bs.Quantity
-                                    })
-                                    .ToList()
+                                Quantity = l.Quantity
                             })
                             .ToList()
                     };
@@ -1145,23 +1088,6 @@ namespace LuminaBox.Application.Services
 
                         await _unitOfWork.OrderItems.AddAsync(orderItem);
 
-                        if (line.ItemType == OrderItemType.Box && line.BoxSelections is not null)
-                        {
-                            var boxSelections = line.BoxSelections
-                                .GroupBy(bs => new { bs.ProductItemId, bs.ProductId, bs.CategoryId, bs.FillingId })
-                                .Select(g => new OrderBoxSelection
-                                {
-                                    OrderItemId = orderItem.Id,
-                                    ProductItemId = g.Key.ProductItemId,
-                                    ProductId = g.Key.ProductId,
-                                    CategoryId = g.Key.CategoryId,
-                                    FillingId = g.Key.FillingId,
-                                    Quantity = g.Sum(x => x.Quantity)
-                                })
-                                .ToList();
-
-                            await _unitOfWork.OrderBoxSelections.AddRangeAsync(boxSelections);
-                        }
                     }
 
                     await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
@@ -1316,15 +1242,6 @@ namespace LuminaBox.Application.Services
             throw ErrorHelper.BadRequest($"StallId is required for box '{boxName}'.");
         }
 
-        private sealed class ResolvedBoxSelection
-        {
-            public Guid ProductItemId { get; set; }
-            public Guid ProductId { get; set; }
-            public Guid CategoryId { get; set; }
-            public Guid FillingId { get; set; }
-            public int Quantity { get; set; }
-        }
-
         private sealed class PreparedOrderLine
         {
             public Guid OrganizerId { get; set; }
@@ -1340,7 +1257,6 @@ namespace LuminaBox.Application.Services
             public int Quantity { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal Subtotal { get; set; }
-            public List<ResolvedBoxSelection>? BoxSelections { get; set; }
         }
 
         private sealed class PreparedOrderGroupPlan

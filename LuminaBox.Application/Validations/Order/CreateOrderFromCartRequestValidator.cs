@@ -16,10 +16,6 @@ namespace LuminaBox.Application.Validations.Order
 
             RuleFor(x => x.CartItemIds)
                 .NotEmpty().WithMessage("At least one CartItemId is required.");
-
-            RuleForEach(x => x.BoxItems)
-                .SetValidator(new OrderFromCartBoxSelectionRequestValidator())
-                .When(x => x.BoxItems != null);
         }
     }
 }

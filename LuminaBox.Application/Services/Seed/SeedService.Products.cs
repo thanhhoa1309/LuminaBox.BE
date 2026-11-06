@@ -103,12 +103,12 @@ namespace LuminaBox.Application.Services
 
         private static readonly BoxSeed[] BoxSeeds =
         {
-            new(Moonlight, "Hộp 4 Bánh Moonlight", "Hộp cứng 4 bánh, phù hợp quà tặng.", 4, 400, 120_000m, new[] { "STL-001" }, 40, 20),
-            new(Moonlight, "Hộp 6 Bánh Premium", "Hộp sơn mài 6 bánh, kèm túi giấy.", 6, 550, 180_000m, new[] { "STL-001" }, 25, 15),
-            new(Luna, "Hộp Online Luna 4", "Hộp ship toàn quốc 4 bánh.", 4, 380, 99_000m, Array.Empty<string>(), 80, 0),
-            new(TrangVang, "Hộp Gia Truyền 4", "Hộp gỗ khắc tên thương hiệu.", 4, 600, 250_000m, new[] { "STL-003" }, 30, 12),
-            new(HoaSen, "Hộp Hoa Sen 6", "Sáu bánh dẻo, hộp giấy dó.", 6, 420, 160_000m, new[] { "STL-004" }, 35, 15),
-            new(MayTra, "Hộp Mây Trà 4", "Bốn bánh ít ngọt kèm gói trà.", 4, 360, 110_000m, Array.Empty<string>(), 50, 0)
+            new(Moonlight, "Hộp 4 Bánh Moonlight", "Hộp cứng đựng 4 bánh, phù hợp quà tặng.", 4, 180, 35_000m, new[] { "STL-001" }, 40, 20),
+            new(Moonlight, "Hộp 6 Bánh Premium", "Hộp sơn mài đựng 6 bánh, kèm túi giấy.", 6, 260, 60_000m, new[] { "STL-001" }, 25, 15),
+            new(Luna, "Hộp Online Luna 4", "Hộp giấy đựng 4 bánh, ship toàn quốc.", 4, 150, 25_000m, Array.Empty<string>(), 80, 0),
+            new(TrangVang, "Hộp Gia Truyền 4", "Hộp gỗ khắc tên thương hiệu, đựng 4 bánh.", 4, 350, 85_000m, new[] { "STL-003" }, 30, 12),
+            new(HoaSen, "Hộp Hoa Sen 6", "Hộp giấy dó đựng 6 bánh.", 6, 200, 45_000m, new[] { "STL-004" }, 35, 15),
+            new(MayTra, "Hộp Mây Trà 4", "Hộp đựng 4 bánh, kèm gói trà.", 4, 170, 40_000m, Array.Empty<string>(), 50, 0)
         };
 
         private async Task SeedProductsAsync()

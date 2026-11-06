@@ -9,7 +9,6 @@ namespace LuminaBox.Application.Dtos.Order
         public int Quantity { get; set; } = 1;
         public Guid? BoxItemId { get; set; }
         public Guid? StallId { get; set; }
-        public List<CreateOrderBoxSelectionRequest>? Selections { get; set; }
     }
 }
 
