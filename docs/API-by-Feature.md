@@ -98,6 +98,19 @@
 
 **Chức năng:** Onboarding người bán (Flow 2–3); đổi `User.Role → Organization` khi đơn có hiệu lực.
 
+**Body chính**
+
+| Route | Body |
+|---|---|
+| `POST /` | `Type`, `BrandName`, `ContactPhone`, `BusinessInfo?`; Stall thêm `StallId`, `StartDate`, `EndDate` (`yyyy-MM-dd`) |
+| `POST /additional-stalls` | `StallIds[]` (1–10, không trùng), `StartDate`, `EndDate` |
+| `POST /additional-online` | Không có body; thông tin lấy từ hồ sơ Organizer |
+| `PUT /{id}/approve` | `CommissionRate` (Online, 0–100, tối đa 2 số lẻ); Stall gửi `{}` hoặc bỏ trống |
+| `PUT /{id}/reject` | `RejectReason` |
+| `PUT /{id}/cancel` | `CancelReason?` |
+
+**Lưu ý:** Sau khi được đổi role, FE gọi `POST api/auth/refresh-token` để nhận token mới. Đơn của người khác trả 404 ở `confirm` / `cancel`.
+
 ---
 
 ## 4. Hồ sơ Organizer & địa chỉ lấy hàng
@@ -342,8 +355,20 @@
 
 | Method | Route | Quyền | Ý nghĩa |
 |---|---|---|---|
-| POST | `api/seed` | *(dev)* | Sinh dữ liệu mẫu để test. |
-| DELETE | `api/seed` | *(dev)* | Xóa dữ liệu seed / toàn bộ (dùng cẩn thận). |
+| POST | `api/seed` | *(dev)* | Sinh dữ liệu mẫu: users, categories, fillings, stalls, organizers, products, boxes, vouchers, events. Idempotent. Cần có Ward (`sync-geo`) trước. |
+| DELETE | `api/seed` | *(dev)* | Truncate toàn bộ app data (giữ Provinces/Districts/Wards + migration history). |
+
+**Tài khoản mẫu sau seed**
+
+| Email | Password | Role |
+|---|---|---|
+| `manager@luminabox.com` | `Manager@123` | Manager |
+| `user@luminabox.com` | `User@123` | User |
+| `user2@luminabox.com` | `User@123` | User |
+| `user3@luminabox.com` | `User@123` | User |
+| `user4@luminabox.com` | `User@123` | User |
+| `org1@luminabox.com` | `Organization@123` | Organization (Moonlight Bakery + STL-001) |
+| `org2@luminabox.com` | `Organization@123` | Organization (Luna Online) |
 
 > Không dùng trên production.
 
