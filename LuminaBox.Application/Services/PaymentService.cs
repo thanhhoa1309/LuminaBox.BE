@@ -21,6 +21,7 @@ namespace LuminaBox.Application.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<PaymentService> _logger;
         private readonly IWalletService _walletService;
+        private readonly IOrderStockService _orderStockService;
 
         public PaymentService(
             IUnitOfWork unitOfWork,
@@ -29,7 +30,8 @@ namespace LuminaBox.Application.Services
             IStripePaymentService stripe,
             IConfiguration configuration,
             ILogger<PaymentService> logger,
-            IWalletService walletService)
+            IWalletService walletService,
+            IOrderStockService orderStockService)
         {
             _unitOfWork = unitOfWork;
             _claimsService = claimsService;
@@ -38,6 +40,7 @@ namespace LuminaBox.Application.Services
             _configuration = configuration;
             _logger = logger;
             _walletService = walletService;
+            _orderStockService = orderStockService;
         }
 
         public async Task<CheckoutResponse> CreateCheckoutAsync(Guid orderId)
@@ -68,6 +71,17 @@ namespace LuminaBox.Application.Services
             var expireAt = payment.CreatedAt.AddMinutes(UnpaidExpireMinutes);
             if (_currentTime.GetCurrentTime() >= expireAt)
                 throw ErrorHelper.Conflict("Payment window has expired. Please create a new order.");
+
+            if (!string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
+            {
+                var (previousStatus, previousIntentId) = await _stripe.ExpireCheckoutSessionAsync(payment.CheckoutSessionId);
+
+                if (IsPaid(previousStatus))
+                {
+                    await HandlePaymentSuccessAsync(payment, previousIntentId ?? payment.CheckoutSessionId);
+                    throw ErrorHelper.Conflict("This order has already been paid.");
+                }
+            }
 
             // No webhook required: Stripe redirects browser to API after pay.
             var apiUrl = (_configuration["APP_PUBLIC_API_URL"]
@@ -128,7 +142,7 @@ namespace LuminaBox.Application.Services
                         p => p.CheckoutSessionId == sessionId);
 
                     if (payment is not null)
-                        await AbandonUnpaidPaymentAsync(payment, PaymentStatus.Failed, "Stripe checkout session expired.");
+                        await AbandonUnpaidPaymentAsync(payment, PaymentStatus.Failed, "Stripe checkout session expired.", closeSession: false);
                     else
                         _logger.LogWarning("[StripeWebhook] No payment found for expired session {SessionId}", sessionId);
 
@@ -205,14 +219,11 @@ namespace LuminaBox.Application.Services
             if (payment.UserId != userId)
                 throw ErrorHelper.Forbidden("You can only sync your own payments.");
 
-            if (payment.Status == PaymentStatus.Success)
+            if (payment.Status is PaymentStatus.Success or PaymentStatus.Refunded)
                 return ToPaymentResponse(payment);
 
             if (payment.Method != PaymentMethod.Stripe)
                 throw ErrorHelper.BadRequest("Only Stripe payments can be synced from checkout.");
-
-            if (payment.Status != PaymentStatus.Pending)
-                throw ErrorHelper.Conflict($"Payment is {payment.Status} and cannot be synced.");
 
             if (string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
                 throw ErrorHelper.Conflict("Checkout session has not been created yet.");
@@ -223,7 +234,7 @@ namespace LuminaBox.Application.Services
                 "[SyncCheckout] Payment {PaymentId} Stripe status={Status}",
                 payment.Id, paymentStatus);
 
-            if (!string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+            if (!IsPaid(paymentStatus))
                 throw ErrorHelper.Conflict($"Stripe checkout is not paid yet (status: {paymentStatus}).");
 
             await HandlePaymentSuccessAsync(payment, paymentIntentId ?? payment.CheckoutSessionId);
@@ -242,14 +253,11 @@ namespace LuminaBox.Application.Services
                 p => p.CheckoutSessionId == sessionId)
                 ?? throw ErrorHelper.NotFound($"Payment not found for Stripe session '{sessionId}'.");
 
-            if (payment.Status == PaymentStatus.Success)
+            if (payment.Status is PaymentStatus.Success or PaymentStatus.Refunded)
                 return ToPaymentResponse(payment);
 
             if (payment.Method != PaymentMethod.Stripe)
                 throw ErrorHelper.BadRequest("Only Stripe payments can be completed from checkout.");
-
-            if (payment.Status != PaymentStatus.Pending)
-                throw ErrorHelper.Conflict($"Payment is {payment.Status} and cannot be completed.");
 
             var (paymentStatus, paymentIntentId) = await _stripe.GetCheckoutSessionAsync(sessionId);
 
@@ -257,7 +265,7 @@ namespace LuminaBox.Application.Services
                 "[CompleteCheckout] Payment {PaymentId} Stripe status={Status}",
                 payment.Id, paymentStatus);
 
-            if (!string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+            if (!IsPaid(paymentStatus))
                 throw ErrorHelper.Conflict($"Stripe checkout is not paid yet (status: {paymentStatus}).");
 
             await HandlePaymentSuccessAsync(payment, paymentIntentId ?? sessionId);
@@ -318,6 +326,56 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.SaveChangesAsync();
         }
 
+        public async Task CloseCheckoutSessionAsync(Guid orderId)
+        {
+            var payment = await _unitOfWork.Payments.FirstOrDefaultAsync(p => p.OrderId == orderId);
+
+            if (payment is null || payment.Method != PaymentMethod.Stripe || string.IsNullOrWhiteSpace(payment.CheckoutSessionId))
+                return;
+
+            try
+            {
+                var (paymentStatus, paymentIntentId) = await _stripe.ExpireCheckoutSessionAsync(payment.CheckoutSessionId);
+
+                if (IsPaid(paymentStatus))
+                    await HandlePaymentSuccessAsync(payment, paymentIntentId ?? payment.CheckoutSessionId);
+            }
+            catch (Exception ex)
+            {
+                // The order stays cancelled; a late payment is still refunded when Stripe redirects back
+                _logger.LogError(ex, "[CloseCheckout] Could not close the Stripe session of order {OrderId}.", orderId);
+            }
+        }
+
+        public async Task TryRefundOrderPaymentAsync(Guid orderId)
+        {
+            try
+            {
+                await RefundOrderPaymentAsync(orderId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[Refund] Refund failed for order {OrderId}. It will be retried.", orderId);
+            }
+        }
+
+        public async Task<int> RetryPendingRefundsAsync()
+        {
+            var orderIds = await _unitOfWork.Orders.GetQueryable()
+                .AsNoTracking()
+                .Where(o => o.Status == OrderStatus.Cancelled
+                    && o.Payment != null
+                    && o.Payment.Method == PaymentMethod.Stripe
+                    && o.Payment.Status == PaymentStatus.Success)
+                .Select(o => o.Id)
+                .ToListAsync();
+
+            foreach (var orderId in orderIds)
+                await TryRefundOrderPaymentAsync(orderId);
+
+            return orderIds.Count;
+        }
+
         private async Task HandlePaymentSuccessAsync(Payment payment, string transactionId)
         {
             if (payment.Status == PaymentStatus.Success)
@@ -328,15 +386,16 @@ namespace LuminaBox.Application.Services
                 return;
             }
 
+            if (payment.Status == PaymentStatus.Refunded)
+                return;
+
             if (payment.Status != PaymentStatus.Pending)
             {
                 _logger.LogWarning(
                     "[HandlePaymentSuccess] Payment {PaymentId} is {Status}; refunding unexpected Stripe payment.",
                     payment.Id, payment.Status);
 
-                if (!string.IsNullOrWhiteSpace(transactionId))
-                    await _stripe.RefundPaymentAsync(transactionId);
-
+                await RefundUnexpectedPaymentAsync(payment, transactionId);
                 return;
             }
 
@@ -347,14 +406,7 @@ namespace LuminaBox.Application.Services
                     "[HandlePaymentSuccess] Order for payment {PaymentId} is missing or cancelled; refunding.",
                     payment.Id);
 
-                if (!string.IsNullOrWhiteSpace(transactionId))
-                    await _stripe.RefundPaymentAsync(transactionId);
-
-                payment.Status = PaymentStatus.Refunded;
-                payment.TransactionId = transactionId;
-                payment.RefundedAt = _currentTime.GetCurrentTime();
-                await _unitOfWork.Payments.Update(payment);
-                await _unitOfWork.SaveChangesAsync();
+                await RefundUnexpectedPaymentAsync(payment, transactionId);
                 return;
             }
 
@@ -369,10 +421,25 @@ namespace LuminaBox.Application.Services
                 payment.Id, payment.OrderId);
         }
 
+        private static bool IsPaid(string paymentStatus)
+            => string.Equals(paymentStatus, "paid", StringComparison.OrdinalIgnoreCase);
+
+        private async Task RefundUnexpectedPaymentAsync(Payment payment, string transactionId)
+        {
+            await _stripe.RefundPaymentAsync(transactionId);
+
+            payment.Status = PaymentStatus.Refunded;
+            payment.TransactionId = transactionId;
+            payment.RefundedAt = _currentTime.GetCurrentTime();
+            await _unitOfWork.Payments.Update(payment);
+            await _unitOfWork.SaveChangesAsync();
+        }
+
         private async Task AbandonUnpaidPaymentAsync(
             Payment payment,
             PaymentStatus paymentStatus,
-            string orderCancelReason)
+            string orderCancelReason,
+            bool closeSession = true)
         {
             if (payment.Status != PaymentStatus.Pending)
                 return;
@@ -398,6 +465,7 @@ namespace LuminaBox.Application.Services
                     order.CancelReason = orderCancelReason;
 
                     await RestoreVouchersForOrderAsync(order.Id, now);
+                    await _orderStockService.RestoreAsync(order.Id);
                     await _unitOfWork.Orders.Update(order);
                     await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
                     {
@@ -416,6 +484,9 @@ namespace LuminaBox.Application.Services
             _logger.LogInformation(
                 "[AbandonUnpaidPayment] Payment {PaymentId} marked {Status}.",
                 payment.Id, paymentStatus);
+
+            if (closeSession)
+                await CloseCheckoutSessionAsync(payment.OrderId);
         }
 
         private async Task RestoreVouchersForOrderAsync(Guid orderId, DateTime now)

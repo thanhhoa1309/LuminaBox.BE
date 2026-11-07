@@ -29,6 +29,17 @@ namespace LuminaBox.Api.Controllers
             return Ok(ApiResult.Success("200", "All sample data seeded successfully."));
         }
 
+        [HttpPost("edge-cases")]
+        [SwaggerOperation(
+            Summary = "Seed edge case data",
+            Description = "Seeds the sample data, then accounts, products, vouchers and a cart built to hit failure paths. Development only.")]
+        public async Task<IActionResult> SeedEdgeCases()
+        {
+            EnsureDevelopment();
+            await _seedService.SeedEdgeCasesAsync();
+            return Ok(ApiResult.Success("200", "Edge case data seeded successfully."));
+        }
+
         [HttpDelete]
         [SwaggerOperation(
             Summary = "Clear application data",

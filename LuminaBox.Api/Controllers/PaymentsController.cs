@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using LuminaBox.Application.Dtos.Payment;
+using LuminaBox.Application.Exceptions;
 using LuminaBox.Application.Interface;
 using LuminaBox.Application.Utils;
+using LuminaBox.Domain.Enums;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace LuminaBox.Api.Controllers
@@ -12,11 +14,15 @@ namespace LuminaBox.Api.Controllers
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
+        private readonly IConfiguration _configuration;
 
-        public PaymentsController(IPaymentService paymentService)
+        public PaymentsController(IPaymentService paymentService, IConfiguration configuration)
         {
             _paymentService = paymentService;
+            _configuration = configuration;
         }
+
+        private string FrontendUrl => (_configuration["APP_FRONTEND_URL"] ?? "http://localhost:5173").TrimEnd('/');
 
         [Authorize]
         [HttpPost("checkout")]
@@ -69,17 +75,16 @@ namespace LuminaBox.Api.Controllers
             Description = "Stripe redirects here after successful payment. Verifies the session with Stripe and marks payment Success.")]
         public async Task<IActionResult> StripeReturn([FromQuery(Name = "session_id")] string sessionId)
         {
-            var result = await _paymentService.CompleteCheckoutBySessionAsync(sessionId);
-            var html =
-                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>Payment success</title></head>" +
-                "<body style=\"font-family:sans-serif;padding:2rem\">" +
-                "<h1>Thanh toan thanh cong</h1>" +
-                $"<p>PaymentId: {result.Id}</p>" +
-                $"<p>OrderId: {result.OrderId}</p>" +
-                $"<p>Status: {result.Status}</p>" +
-                "<p>Ban co the dong tab nay va kiem tra lai don hang tren API/Swagger.</p>" +
-                "</body></html>";
-            return Content(html, "text/html");
+            try
+            {
+                var result = await _paymentService.CompleteCheckoutBySessionAsync(sessionId);
+                var status = result.Status == PaymentStatus.Refunded ? "refunded" : "success";
+                return Redirect($"{FrontendUrl}/payment/result?status={status}&orderId={result.OrderId}");
+            }
+            catch (AppException)
+            {
+                return Redirect($"{FrontendUrl}/payment/result?status=failed");
+            }
         }
 
         [AllowAnonymous]
@@ -101,13 +106,7 @@ namespace LuminaBox.Api.Controllers
                 }
             }
 
-            var html =
-                "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><title>Payment cancelled</title></head>" +
-                "<body style=\"font-family:sans-serif;padding:2rem\">" +
-                "<h1>Thanh toan da huy / chua hoan tat</h1>" +
-                "<p>Ban co the dong tab nay.</p>" +
-                "</body></html>";
-            return Content(html, "text/html");
+            return Redirect($"{FrontendUrl}/payment/result?status=cancelled");
         }
 
         [AllowAnonymous]

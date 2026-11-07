@@ -186,8 +186,7 @@
 |---|---|---|---|
 | GET | `api/box-items` | Public | Danh sách hộp Active. |
 | GET | `api/box-items/me` | Organization | Hộp của shop tôi. |
-| GET | `api/box-items/{id}` | Public | Chi tiết hộp (capacity, giá cố định, ảnh, products). |
-| GET | `api/box-items/{id}/available-products` | Public | Bánh có thể bỏ vào hộp (cùng organizer / stall). |
+| GET | `api/box-items/{id}` | Public | Chi tiết hộp (capacity, giá của riêng hộp, ảnh). |
 | POST | `api/box-items` | Organization | Tạo hộp combo. |
 | PUT | `api/box-items/{id}` | Organization | Sửa hộp (tên, capacity, giá, products, ảnh…). |
 | PUT | `api/box-items/{id}/stalls` | Organization | Gán stall cho hộp. |
@@ -229,7 +228,7 @@
 | PUT | `api/carts/items/{itemId}` | Auth | Cập nhật Quantity (Product có thể đổi Category/Filling → re-resolve giá). |
 | DELETE | `api/carts/items/{itemId}` | Auth | Xóa một dòng giỏ. |
 
-**Ý nghĩa:** Cart lưu lựa chọn mua kèm giá snapshot. Product: `CategoryId` + `FillingId` + `Quantity` → match `ProductVariant` lấy `UnitPrice`. Box: `Quantity` + `UnitPrice` từ `BoxItem`; selection bánh trong hộp chọn lúc checkout. Trùng cùng variant/stall → cộng dồn Quantity.
+**Ý nghĩa:** Cart lưu lựa chọn mua kèm giá snapshot. Product: `CategoryId` + `FillingId` + `Quantity` → match `ProductVariant` lấy `UnitPrice`. Box: `Quantity` + `UnitPrice` từ `BoxItem`. Trùng cùng variant/stall → cộng dồn Quantity.
 
 ---
 
@@ -264,7 +263,7 @@
 | Method | Route | Quyền | Ý nghĩa |
 |---|---|---|---|
 | POST | `api/orders` | Auth | Đặt hàng trực tiếp: chọn Category+Filling+SL, địa chỉ, voucher, payment method → 1..n order theo `(OrganizerId, StallId)`. |
-| POST | `api/orders/from-cart` | Auth | Checkout từ các `CartItemId` đã chọn (Product dùng C+F+SL+giá trên cart; Box kèm Selections); sau đó xóa mềm cart item tương ứng. |
+| POST | `api/orders/from-cart` | Auth | Checkout từ các `CartItemId` đã chọn (Product và Box đều dùng số lượng và giá trên cart); sau đó xóa mềm cart item tương ứng. |
 | GET | `api/orders/me` | Auth | Đơn mua của tôi (lọc status, ngày). |
 | GET | `api/orders/{id}` | Auth | Chi tiết đơn (buyer hoặc organizer của đơn). |
 
@@ -399,7 +398,7 @@ CRUD stall; duyệt/từ chối registration; suspend Organizer; voucher sàn; e
 3. `GET/POST api/shipping-addresses` → chọn địa chỉ nhận  
 4. `POST api/shipping/fee` → xem phí  
 5. `GET api/vouchers/my` → chọn voucher đã claim  
-6. `POST api/orders/from-cart` (CartItemIds + ShippingAddressId + PaymentMethod=Stripe; Box kèm Selections)  
+6. `POST api/orders/from-cart` (CartItemIds + ShippingAddressId + PaymentMethod=Stripe)  
 7. `POST api/payments/checkout` → mở Stripe  
 8. `POST api/payments/{id}/sync` (hoặc chờ webhook/return)  
 9. Chờ Organizer `confirm` → `ship` → `mark-delivered`  

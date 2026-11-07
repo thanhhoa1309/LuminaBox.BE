@@ -29,6 +29,11 @@ namespace LuminaBox.Api.Middlewares
 
                 await WriteErrorAsync(context, ex.StatusCode, ex.ErrorCode ?? ex.StatusCode.ToString(), ex.Message);
             }
+            catch (DbUpdateConcurrencyException ex)
+            {
+                _logger.LogWarning(ex, "Optimistic concurrency conflict");
+                await WriteErrorAsync(context, StatusCodes.Status409Conflict, "409", "The data was changed by another request. Please try again.");
+            }
             catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ExclusionViolation })
             {
                 _logger.LogWarning(ex, "Unique or exclusion constraint violation");

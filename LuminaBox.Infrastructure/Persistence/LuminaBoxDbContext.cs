@@ -490,6 +490,10 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany()
                     .HasForeignKey(x => x.ProductId);
 
+                e.HasOne(x => x.ProductItem)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProductItemId);
+
                 e.HasOne(x => x.BoxItem)
                     .WithMany()
                     .HasForeignKey(x => x.BoxItemId);
@@ -529,13 +533,21 @@ namespace LuminaBox.Infrastructure.Persistence
                     .WithMany()
                     .HasForeignKey(x => x.FillingId);
 
-                e.HasIndex(x => new { x.OrderItemId, x.ProductId, x.CategoryId, x.FillingId })
+                e.HasOne(x => x.ProductItem)
+                    .WithMany()
+                    .HasForeignKey(x => x.ProductItemId);
+
+                e.HasIndex(x => new { x.OrderItemId, x.ProductItemId })
                     .IsUnique()
                     .HasFilter(NotDeletedFilter);
 
                 e.ToTable(t => t.HasCheckConstraint("CK_OrderBoxSelections_Quantity", "\"Quantity\" > 0"));
             });
 
+
+            modelBuilder.Entity<StallProductItem>().Property(x => x.Version).IsRowVersion();
+            modelBuilder.Entity<StallBoxItem>().Property(x => x.Version).IsRowVersion();
+            modelBuilder.Entity<Wallet>().Property(x => x.Version).IsRowVersion();
 
             modelBuilder.Entity<OrderStatusHistory>(e =>
             {

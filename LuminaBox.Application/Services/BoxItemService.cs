@@ -105,30 +105,6 @@ namespace LuminaBox.Application.Services
             return new Pagination<BoxItemResponse>(items, totalCount, pagination.PageIndex, pagination.PageSize);
         }
 
-        public async Task<List<BoxAvailableProductResponse>> GetAvailableProductsAsync(Guid id, Guid? stallId)
-        {
-            var box = await _unitOfWork.BoxItems.GetQueryable()
-                .AsNoTracking()
-                .Where(b => b.Id == id
-                    && b.Status == ProductStatus.Active
-                    && b.Organizer.Status == OrganizerStatus.Active
-                    && b.Stocks.Any(s => s.StallId == stallId && s.IsActive && s.StockQuantity > 0))
-                .Select(b => new { b.OrganizerId })
-                .FirstOrDefaultAsync()
-                ?? throw ErrorHelper.NotFound("Box item is not sold at this stall.", "E9.4");
-
-            return await _unitOfWork.StallProductItems.GetQueryable()
-                .AsNoTracking()
-                .Where(s => s.StallId == stallId
-                    && s.IsActive
-                    && s.StockQuantity > 0
-                    && s.ProductItem.Product.OrganizerId == box.OrganizerId
-                    && s.ProductItem.Product.Status == ProductStatus.Active)
-                .OrderBy(s => s.ProductItem.Name)
-                .ProjectTo<BoxAvailableProductResponse>(_mapper.ConfigurationProvider)
-                .ToListAsync();
-        }
-
         public async Task<BoxItemResponse> CreateAsync(CreateBoxItemRequest request)
         {
             var organizer = await _organizerAccess.GetSellingOrganizerAsync();

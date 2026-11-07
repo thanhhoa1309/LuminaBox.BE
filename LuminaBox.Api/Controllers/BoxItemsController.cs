@@ -46,16 +46,6 @@ namespace LuminaBox.Api.Controllers
             return Ok(ApiResult<BoxItemResponse>.Success(result));
         }
 
-        [HttpGet("{id:guid}/available-products")]
-        [SwaggerOperation(
-            Summary = "Get cakes available for a box",
-            Description = "Gets sellable variants of the box's organizer at a stall; without stallId it uses the online stock. Public.")]
-        public async Task<IActionResult> GetAvailableProducts(Guid id, [FromQuery] Guid? stallId = null)
-        {
-            var result = await _service.GetAvailableProductsAsync(id, stallId);
-            return Ok(ApiResult<List<BoxAvailableProductResponse>>.Success(result));
-        }
-
         [Authorize(Roles = "Organization")]
         [HttpGet("me")]
         [SwaggerOperation(

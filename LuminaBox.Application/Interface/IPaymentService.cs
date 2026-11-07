@@ -18,5 +18,11 @@ namespace LuminaBox.Application.Interface
         Task<PaymentResponse> CompleteCheckoutBySessionAsync(string sessionId);
         Task<int> ExpireUnpaidPaymentsAsync();
         Task RefundOrderPaymentAsync(Guid orderId);
+        /// <summary>Closes the Stripe link of a cancelled order; refunds if the buyer paid before it closed.</summary>
+        Task CloseCheckoutSessionAsync(Guid orderId);
+        /// <summary>Refunds without failing the caller; the expire worker retries what is left.</summary>
+        Task TryRefundOrderPaymentAsync(Guid orderId);
+        /// <summary>Refunds cancelled orders whose Stripe payment is still marked Success.</summary>
+        Task<int> RetryPendingRefundsAsync();
     }
 }

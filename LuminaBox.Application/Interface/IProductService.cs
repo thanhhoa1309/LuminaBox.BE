@@ -6,27 +6,11 @@ namespace LuminaBox.Application.Interface
 {
     public interface IProductService
     {
-        Task<Pagination<ProductSummaryResponse>> GetAllAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            Guid? categoryId = null,
-            Guid? fillingId = null,
-            Guid? organizerId = null,
-            Guid? stallId = null);
+        Task<Pagination<ProductSummaryResponse>> GetAllAsync(ProductListQuery filter);
 
         Task<ProductResponse> GetByIdAsync(Guid id);
 
-        Task<Pagination<ProductResponse>> GetMineAsync(
-            string? search,
-            string? sortBy,
-            bool isDescending,
-            int page,
-            int pageSize,
-            ProductStatus? status = null,
-            Guid? categoryId = null);
+        Task<Pagination<ProductResponse>> GetMineAsync(MyProductListQuery filter);
 
         Task<ProductResponse> CreateAsync(CreateProductRequest request);
 

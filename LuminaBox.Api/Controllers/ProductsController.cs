@@ -26,18 +26,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get paginated list of products",
             Description = "Gets a paginated list of active products with search, filter and sort. Public.")]
-        public async Task<IActionResult> GetAll(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] Guid? categoryId = null,
-            [FromQuery] Guid? fillingId = null,
-            [FromQuery] Guid? organizerId = null,
-            [FromQuery] Guid? stallId = null)
+        public async Task<IActionResult> GetAll([FromQuery] ProductListQuery filter)
         {
-            var result = await _productService.GetAllAsync(search, sortBy, isDescending, page, pageSize, categoryId, fillingId, organizerId, stallId);
+            var result = await _productService.GetAllAsync(filter);
             return Ok(ApiResult<Pagination<ProductSummaryResponse>>.Success(result));
         }
 
@@ -56,16 +47,9 @@ namespace LuminaBox.Api.Controllers
         [SwaggerOperation(
             Summary = "Get my products",
             Description = "Gets a paginated list of the current organizer's products in any status. Requires Organization role.")]
-        public async Task<IActionResult> GetMine(
-            [FromQuery] string? search,
-            [FromQuery] string? sortBy,
-            [FromQuery] bool isDescending = true,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10,
-            [FromQuery] ProductStatus? status = null,
-            [FromQuery] Guid? categoryId = null)
+        public async Task<IActionResult> GetMine([FromQuery] MyProductListQuery filter)
         {
-            var result = await _productService.GetMineAsync(search, sortBy, isDescending, page, pageSize, status, categoryId);
+            var result = await _productService.GetMineAsync(filter);
             return Ok(ApiResult<Pagination<ProductResponse>>.Success(result));
         }
 

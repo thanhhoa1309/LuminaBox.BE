@@ -13,17 +13,20 @@ namespace LuminaBox.Domain.Entities
         public Guid? ProductId { get; set; }
         public Product? Product { get; set; }
 
+        // The exact variant sold, needed to return stock; null for Box lines
+        public Guid? ProductItemId { get; set; }
+        public ProductItem? ProductItem { get; set; }
+
         public Guid? BoxItemId { get; set; }
         public BoxItem? BoxItem { get; set; }
 
-        // Required for Product lines; null for Box lines (box uses BoxSelections)
+        // Required for Product lines; null for Box lines
         public Guid? CategoryId { get; set; }
         public CakeCategory? Category { get; set; }
 
         public Guid? FillingId { get; set; }
         public Filling? Filling { get; set; }
 
-        // Always 1 for Box lines; buying 2 boxes creates 2 lines
         public int Quantity { get; set; }
 
         // Price snapshot at order time

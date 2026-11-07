@@ -19,8 +19,7 @@ namespace LuminaBox.Application.Validations.Shipping
             RuleForEach(x => x.Boxes).ChildRules(box =>
             {
                 box.RuleFor(b => b.BoxItemId).NotEmpty().WithMessage("Box is required.");
-                box.RuleFor(b => b.Selections).NotEmpty().WithMessage("A box needs its cakes.");
-                box.RuleForEach(b => b.Selections).SetValidator(new ShippingItemRequestValidator());
+                box.RuleFor(b => b.Quantity).GreaterThan(0).WithMessage("Box quantity must be greater than 0.");
             });
         }
     }

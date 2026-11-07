@@ -132,10 +132,10 @@ stateDiagram-v2
 | BR-06 | Khi đặt hàng, client gửi `ProductId + CategoryId + FillingId + Quantity`; hệ thống **đối chiếu variant** để lấy `UnitPrice` (không gửi `VariantId`). |
 | BR-07 | Mỗi `Order` thuộc **một cặp `(OrganizerId, StallId)`** (`StallId` có thể null = online). Giỏ nhiều organizer/stall → nhiều order. |
 | BR-08 | Mỗi order áp tối đa **1 voucher sàn + 1 voucher gian hàng**. Voucher phải đã claim vào `UserVoucher`. Giảm giá tuần tự trên số còn lại; `TotalAmount = max(0, Subtotal − PlatformDiscount − OrganizerDiscount) + ShippingFee`. |
-| BR-09 | Snapshot giá vào `OrderItem.UnitPrice` lúc đặt. Dòng hộp: `Quantity = 1`; mua 2 hộp = 2 dòng. Tổng `OrderBoxSelection.Quantity` = `BoxItem.Capacity`. |
+| BR-09 | Snapshot giá vào `OrderItem.UnitPrice` lúc đặt. Hộp là mặt hàng bán riêng: 1 dòng `Quantity = n`, không chứa bánh. |
 | BR-10 | Product/Box gắn **nhiều stall** (many–many). 0 stall = online-only; 1 stall = auto chọn; ≥2 stall = User phải chọn `StallId` khi thêm giỏ / đặt. |
 | BR-11 | `CakeCategory` và `Filling` thuộc **từng Organizer** (không còn catalog Manager toàn cục). |
-| BR-12 | Cart lưu lựa chọn mua: Product → `CategoryId` + `FillingId` + `Quantity` + `UnitPrice` (snapshot từ `ProductVariant`); Box → `Quantity` + `UnitPrice` (từ `BoxItem.Price`), Category/Filling null — selection trong hộp vẫn chọn lúc checkout. Không nhận giá từ client. |
+| BR-12 | Cart lưu lựa chọn mua: Product → `CategoryId` + `FillingId` + `Quantity` + `UnitPrice` (snapshot từ `ProductVariant`); Box → `Quantity` + `UnitPrice` (từ `BoxItem.Price`), Category/Filling null. Không nhận giá từ client. |
 | BR-13 | Stripe: **một lần checkout chỉ 1 nhóm** (1 organizer + 1 stall). COD tạo Payment kèm order nhưng chưa có luồng checkout riêng. |
 | BR-14 | Phí ship GHN tính lúc tạo order, **User trả**, cộng vào `TotalAmount`. Điểm lấy hàng luôn từ **địa chỉ Organizer** (`ShippingAddress` OwnerType=Organizer), không từ Stall. |
 | BR-15 | Địa chỉ dùng chung entity `ShippingAddress` theo `OwnerType` + `OwnerId`: User nhiều địa chỉ (có `IsDefault`); Organizer / Stall **mỗi bên tối đa 1 địa chỉ**. Stall vẫn giữ `Location` text hiển thị; address GHN dùng cho ship. |
@@ -339,8 +339,8 @@ Ví dụ:
 
 #### 5.4 BoxItem (hộp combo)
 
-- `Name`, `Capacity`, `Price` cố định cả hộp, ảnh nhiều (`BoxImage`), gán Products thuộc Organizer, gán Stalls tương tự Product.
-- `available-products`: bánh Active cùng organizer (và stall nếu filter).
+- Hộp là mặt hàng bán riêng với bánh, khách không chọn bánh bỏ vào hộp.
+- `Name`, `Capacity` (số bánh hộp đựng được, chỉ để hiển thị), `Price` là giá của riêng hộp, ảnh nhiều (`BoxImage`), gán Stalls tương tự Product.
 
 **API**
 
@@ -350,7 +350,7 @@ Ví dụ:
 | `api/fillings` | GET | me, POST, PUT, DELETE |
 | `api/products` | GET | me, CRUD, PUT stalls, PUT status |
 | `api/product-variants` | GET | POST, PUT, DELETE |
-| `api/box-items` | GET, available-products | me, CRUD, stalls, status |
+| `api/box-items` | GET | me, CRUD, stalls, status |
 
 ---
 
@@ -388,7 +388,7 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 **Luồng**
 
 1. Thêm product: `ProductId` + `CategoryId` + `FillingId` + `Quantity` + optional `StallId` (resolve stall: 0 → null; 1 → auto; ≥2 → bắt buộc StallId thuộc product). Hệ thống match `ProductVariant` → `UnitPrice = variant.Price` (không nhận giá từ client).
-2. Thêm box: `BoxItemId` + `Quantity` + optional `StallId`; `UnitPrice = BoxItem.Price`. Category/Filling = null; chọn bánh trong hộp lúc checkout.
+2. Thêm box: `BoxItemId` + `Quantity` + optional `StallId`; `UnitPrice = BoxItem.Price`. Category/Filling = null.
 3. Trùng cùng khóa unique → cộng dồn `Quantity` (không tạo dòng mới):
    - Product: `(CartId, ProductId, CategoryId, FillingId, StallId)`
    - Box: `(CartId, BoxItemId, StallId)`
@@ -416,8 +416,8 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 
 - `ShippingAddressId` (OwnerType=User của buyer).
 - `PaymentMethod` (`Stripe` | `CashOnDelivery`).
-- `POST /orders` (trực tiếp): Product gửi `ProductId`, `CategoryId`, `FillingId`, `Quantity`, optional `StallId`; Box gửi `BoxItemId`, `Selections[{ProductId, CategoryId, FillingId, Quantity}]`, optional `StallId`.
-- `POST /orders/from-cart`: gửi danh sách `CartItemId` đã chọn (+ địa chỉ / payment / voucher). Product lấy Category/Filling/Quantity/UnitPrice từ cart (có thể re-validate variant còn tồn tại); Box lấy Quantity/UnitPrice từ cart, vẫn cần `Selections` trong request.
+- `POST /orders` (trực tiếp): Product gửi `ProductId`, `CategoryId`, `FillingId`, `Quantity`, optional `StallId`; Box gửi `BoxItemId`, `Quantity`, optional `StallId`.
+- `POST /orders/from-cart`: gửi danh sách `CartItemId` đã chọn (+ địa chỉ / payment / voucher). Product lấy Category/Filling/Quantity/UnitPrice từ cart (có thể re-validate variant còn tồn tại); Box lấy Quantity/UnitPrice từ cart.
 - Optional voucher ids đã claim.
 
 **Luồng chính**
@@ -425,13 +425,13 @@ Sửa / bật–tắt / xóa (chỉ khi `UsedCount=0`).
 1. Load địa chỉ nhận → snapshot `Receiver*`, `ToProvince/Ward`, `AddressDetail`, `ShippingAddress` text.
 2. Prepare từng dòng:
    - Product Active + tồn tại Variant khớp Category×Filling → `UnitPrice = variant.Price`.
-   - Box Active; Σ selection = Capacity; mỗi selection thuộc box + có variant → `UnitPrice = Box.Price`, `Quantity=1`.
+   - Box Active và còn hàng → `UnitPrice = Box.Price`, `Quantity` theo số hộp mua.
 3. Group theo `(OrganizerId, StallId)` → mỗi group 1 Order + OrderCode.
 4. Nếu `PaymentMethod=Stripe` và >1 group → **409 Conflict** (chỉ 1 nhóm / lần Stripe).
 5. Áp voucher đã claim: kiểm Active, hạn, usage, min subtotal, đúng organizer; tính `PlatformDiscount` / `OrganizerDiscount`.
 6. Tính `ShippingFee` GHN: **From = địa chỉ Organizer**, To = địa chỉ buyer; insurance theo merchandise sau giảm (cap theo GHN). Organizer chưa có address → lỗi.
 7. `TotalAmount = max(0, Subtotal − discounts) + ShippingFee`.
-8. Tạo Order `Pending`, Items (+ BoxSelections), StatusHistory, Payment `Pending` cùng method.
+8. Tạo Order `Pending`, Items, StatusHistory, Payment `Pending` cùng method.
 9. Consume voucher (`UsedCount++`, soft-remove UserVoucher, ghi VoucherUsage).
 10. Notify OrderCreated. Nếu `from-cart` → soft-remove các cart item đã đặt.
 

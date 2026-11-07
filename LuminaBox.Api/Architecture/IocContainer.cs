@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json.Serialization;
 using FluentValidation;
 using FluentValidation.AspNetCore;
@@ -49,7 +49,9 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
 
+
             services.SetupBusinessServicesLayer();
+            services.AddHostedService<UnpaidPaymentExpireWorker>();
 
             services.AddAutoMapper(cfg => cfg.LicenseKey = configuration["AutoMapper:LicenseKey"], typeof(StallMappingProfile).Assembly);
             services.SetupValidation();
@@ -102,6 +104,10 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IBoxItemService, BoxItemService>();
             services.AddScoped<IShippingFeeService, ShippingFeeService>();
             services.AddScoped<IGhnClient, GhnClient>();
+            services.AddScoped<IVoucherService, VoucherService>();
+            services.AddScoped<ICartService, CartService>();
+            services.AddScoped<IOrderService, OrderService>();
+            services.AddScoped<IOrderStockService, OrderStockService>();
             services.AddScoped<IPaymentService, PaymentService>();
             services.AddScoped<IWalletService, WalletService>();
             services.AddScoped<ISeedService, SeedService>();
@@ -211,6 +217,7 @@ namespace LuminaBox.Api.Architecture
         {
             services.AddSwaggerGen(c =>
             {
+                c.DescribeAllParametersInCamelCase();
                 c.UseInlineDefinitionsForEnums();
 
                 c.SwaggerDoc("v1", new OpenApiInfo

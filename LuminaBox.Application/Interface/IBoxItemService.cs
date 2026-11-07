@@ -18,9 +18,6 @@ namespace LuminaBox.Application.Interface
 
         Task<Pagination<BoxItemResponse>> GetMineAsync(string? search, int page, int pageSize, ProductStatus? status = null);
 
-        /// <summary>Sellable variants of the box's organizer at a stall; a null stall means the online stock.</summary>
-        Task<List<BoxAvailableProductResponse>> GetAvailableProductsAsync(Guid id, Guid? stallId);
-
         Task<BoxItemResponse> CreateAsync(CreateBoxItemRequest request);
 
         Task<BoxItemResponse> UpdateAsync(Guid id, UpdateBoxItemRequest request);

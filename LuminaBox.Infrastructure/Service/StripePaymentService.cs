@@ -104,15 +104,28 @@ namespace LuminaBox.Infrastructure.Service
             return (session.PaymentStatus, session.PaymentIntentId);
         }
 
+        public async Task<(string paymentStatus, string? paymentIntentId)> ExpireCheckoutSessionAsync(string sessionId)
+        {
+            try
+            {
+                var session = await new SessionService().ExpireAsync(sessionId);
+                return (session.PaymentStatus, session.PaymentIntentId);
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogInformation(ex, "[Stripe] Session {SessionId} is not open.", sessionId);
+                return await GetCheckoutSessionAsync(sessionId);
+            }
+        }
+
         public async Task RefundPaymentAsync(string paymentIntentId)
         {
             _logger.LogInformation("[Stripe] Refunding PaymentIntent {PaymentIntentId}", paymentIntentId);
 
             var service = new RefundService();
-            await service.CreateAsync(new RefundCreateOptions
-            {
-                PaymentIntent = paymentIntentId
-            });
+            await service.CreateAsync(
+                new RefundCreateOptions { PaymentIntent = paymentIntentId },
+                new RequestOptions { IdempotencyKey = $"refund-{paymentIntentId}" });
         }
     }
 }
