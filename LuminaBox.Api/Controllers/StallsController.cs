@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using LuminaBox.Application.Commons;
 using LuminaBox.Application.Dtos.Stall;
+using LuminaBox.Application.Dtos.StallRental;
 using LuminaBox.Application.Interface;
 using LuminaBox.Application.Utils;
 using LuminaBox.Domain.Enums;
@@ -14,10 +15,12 @@ namespace LuminaBox.Api.Controllers
     public class StallsController : ControllerBase
     {
         private readonly IStallService _service;
+        private readonly IStallRentalService _rentalService;
 
-        public StallsController(IStallService service)
+        public StallsController(IStallService service, IStallRentalService rentalService)
         {
             _service = service;
+            _rentalService = rentalService;
         }
 
         [HttpGet]
@@ -57,6 +60,29 @@ namespace LuminaBox.Api.Controllers
             var result = await _service.GetMineAsync();
             return Ok(ApiResult<List<StallResponse>>.Success(result));
         }
+
+
+        [Authorize(Roles = "Manager")]
+        [HttpGet("{id:guid}/rentals")]
+        [SwaggerOperation(
+            Summary = "Get rental history of a stall",
+            Description = "Manager only. Includes past and future rental contracts of the selected stall.")]
+        public async Task<IActionResult> GetRentals(
+            Guid id,
+            [FromQuery] string? search,
+            [FromQuery] string? sortBy,
+            [FromQuery] bool isDescending = true,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] RentalStatus? status = null)
+        {
+            var result = await _rentalService.GetByStallAsync(
+                id, search, sortBy, isDescending, page, pageSize, status);
+
+            return Ok(
+                ApiResult<Pagination<StallRentalResponse>>.Success(result));
+        }
+
 
         [Authorize(Roles = "Manager")]
         [HttpPost]

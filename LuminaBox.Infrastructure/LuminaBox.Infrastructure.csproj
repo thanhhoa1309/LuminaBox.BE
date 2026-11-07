@@ -32,7 +32,6 @@
 
   <ItemGroup>
     <Folder Include="Commons\" />
-    <Folder Include="BackgroundJobs\" />
     <Folder Include="Service\" />
     <Folder Include="Repositories\" />
     <Folder Include="Persistence\" />
