@@ -30,6 +30,9 @@ namespace LuminaBox.Domain.Entities
         public FulfillmentType FulfillmentType { get; set; } = FulfillmentType.Delivery;
         public decimal ShippingFee { get; set; }
 
+        public string? GhnOrderCode { get; set; }
+        public string? GhnStatus { get; set; }
+
         public decimal SubtotalAmount { get; set; }
 
         // Discount funded by the platform

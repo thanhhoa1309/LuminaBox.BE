@@ -13,8 +13,10 @@ namespace LuminaBox.Application.Services
             ("LBDEMO0001", UserEmail, Moonlight, 2, OrderStatus.Delivered),
             ("LBDEMO0002", UserEmail, Luna, 3, OrderStatus.Delivering),
             ("LBDEMO0003", UserEmail, Moonlight, 1, OrderStatus.Confirmed),
-            ("LBDEMO0004", UserEmail, TrangVang, 2, OrderStatus.Pending),
+            ("LBDEMO0004", UserEmail, TrangVang, 2, OrderStatus.Confirmed),
             ("LBDEMO0005", UserEmail, HoaSen, 1, OrderStatus.Cancelled),
+            ("LBWAYBILL01", UserEmail, Moonlight, 2, OrderStatus.Confirmed),
+            ("LBWAYBILL02", UserEmail, Luna, 1, OrderStatus.Confirmed),
             ("LBDEMO0006", User2Email, Moonlight, 4, OrderStatus.Pending),
             ("LBDEMO0007", User2Email, Luna, 2, OrderStatus.Confirmed),
             ("LBDEMO0008", User3Email, Moonlight, 1, OrderStatus.Delivering),
@@ -36,11 +38,15 @@ namespace LuminaBox.Application.Services
             var buyer = await RequireUserByEmailAsync(email);
             var organizer = await RequireOrganizerByBrandAsync(brand);
 
-            var buyerAddress = await _unitOfWork.Addresses.GetQueryable()
+            var shippingAddresses = _unitOfWork.Addresses.GetQueryable()
                 .Include(a => a.Ward)
                     .ThenInclude(w => w.District)
                         .ThenInclude(d => d.Province)
-                .FirstAsync(a => a.UserId == buyer.Id && a.Type == AddressType.Shipping && a.IsDefault);
+                .Where(a => a.UserId == buyer.Id && a.Type == AddressType.Shipping);
+
+            var buyerAddress = await shippingAddresses
+                    .FirstOrDefaultAsync(a => a.AddressLine == User1VinhomesAddressLine)
+                ?? await shippingAddresses.FirstAsync(a => a.IsDefault);
 
             var pickupAddress = await _unitOfWork.Addresses.GetQueryable()
                 .FirstAsync(a => a.UserId == organizer.UserId && a.Type == AddressType.Pickup && a.IsDefault);

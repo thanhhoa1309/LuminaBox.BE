@@ -25,6 +25,8 @@ namespace LuminaBox.Application.Dtos.Order
         public decimal OrganizerDiscount { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal TotalAmount { get; set; }
+        public string? GhnOrderCode { get; set; }
+        public string? GhnStatus { get; set; }
         public OrderStatus Status { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? ConfirmedAt { get; set; }

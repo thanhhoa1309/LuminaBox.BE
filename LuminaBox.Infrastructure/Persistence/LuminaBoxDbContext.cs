@@ -458,8 +458,11 @@ namespace LuminaBox.Infrastructure.Persistence
                     .HasForeignKey(x => x.PickupAddressId);
 
                 e.Property(x => x.ShippingFee).HasPrecision(18, 2);
+                e.Property(x => x.GhnOrderCode).HasMaxLength(50);
+                e.Property(x => x.GhnStatus).HasMaxLength(50);
 
                 e.HasIndex(x => x.OrderCode).IsUnique().HasFilter(NotDeletedFilter);
+                e.HasIndex(x => x.GhnOrderCode);
                 e.HasIndex(x => new { x.UserId, x.Status });
                 e.HasIndex(x => new { x.OrganizerId, x.Status });
             });
