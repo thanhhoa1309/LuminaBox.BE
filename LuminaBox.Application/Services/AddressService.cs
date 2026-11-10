@@ -46,8 +46,15 @@ namespace LuminaBox.Application.Services
                 var user = await _unitOfWork.Users.GetByIdAsync(userId)
                     ?? throw ErrorHelper.NotFound("User not found.");
 
-                if (user.Role != UserRole.Organization)
-                    throw ErrorHelper.Forbidden("Only organizers can create pickup addresses.", "E16.4");
+                var isOnlineApplicant = await _unitOfWork.OrganizerRegistrations.GetQueryable()
+                    .AnyAsync(r => r.UserId == userId
+                        && r.Type == RegistrationType.Online
+                        && (r.Status == RegistrationStatus.Pending
+                            || r.Status == RegistrationStatus.AwaitingConfirmation
+                            || r.Status == RegistrationStatus.Approved));
+
+                if (user.Role != UserRole.Organization && !isOnlineApplicant)
+                    throw ErrorHelper.Forbidden("Only organizers and online applicants can create pickup addresses.", "E16.4");
             }
 
             await _locationService.EnsureWardExistsAsync(request.WardId);

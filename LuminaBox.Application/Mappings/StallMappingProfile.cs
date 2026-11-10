@@ -1,6 +1,7 @@
 using AutoMapper;
 using LuminaBox.Application.Dtos.Stall;
 using LuminaBox.Domain.Entities;
+using LuminaBox.Domain.Enums;
 
 namespace LuminaBox.Application.Mappings
 {
@@ -14,7 +15,12 @@ namespace LuminaBox.Application.Mappings
                 .ForMember(d => d.ProvinceId, o => o.MapFrom(s => s.Ward.District.ProvinceId))
                 .ForMember(d => d.ProvinceName, o => o.MapFrom(s => s.Ward.District.Province.Name))
                 .ForMember(d => d.DistrictId, o => o.MapFrom(s => s.Ward.DistrictId))
-                .ForMember(d => d.DistrictName, o => o.MapFrom(s => s.Ward.District.Name));
+                .ForMember(d => d.DistrictName, o => o.MapFrom(s => s.Ward.District.Name))
+                .ForMember(d => d.Bookings, o => o.MapFrom(s => s.Rentals
+                    .Where(r => !r.IsDeleted && (r.Status == RentalStatus.Confirmed || r.Status == RentalStatus.Active))
+                    .OrderBy(r => r.StartDate)));
+
+            CreateMap<StallRental, StallBookingResponse>();
 
             CreateMap<CreateStallRequest, Stall>(MemberList.Source)
                 .AddTransform<string?>(value => value == null ? null : value.Trim());
