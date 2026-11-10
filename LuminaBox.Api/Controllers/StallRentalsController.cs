@@ -10,7 +10,7 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace LuminaBox.Api.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/stall-rentals")]
     [ApiController]
     public class StallRentalsController : ControllerBase
     {

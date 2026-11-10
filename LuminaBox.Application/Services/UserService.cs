@@ -93,7 +93,10 @@ namespace LuminaBox.Application.Services
                     Status = u.Status,
                     IsEmailVerified = u.IsEmailVerified,
                     CreatedAt = u.CreatedAt,
-                    UpdatedAt = u.UpdatedAt
+                    UpdatedAt = u.UpdatedAt,
+                    OrganizerId = u.Organizer != null ? u.Organizer.Id : null,
+                    OrganizerBrandName = u.Organizer != null ? u.Organizer.BrandName : null,
+                    OrganizerStatus = u.Organizer != null ? u.Organizer.Status : null
                 })
                 .FirstOrDefaultAsync()
                 ?? throw ErrorHelper.NotFound("User not found.");
