@@ -1,4 +1,5 @@
 using FluentValidation;
+using LuminaBox.Application.Commons;
 using LuminaBox.Application.Dtos.OrganizerRegistration;
 
 namespace LuminaBox.Application.Validations.OrganizerRegistration
@@ -28,6 +29,11 @@ namespace LuminaBox.Application.Validations.OrganizerRegistration
             RuleFor(x => x)
                 .Must(x => x.EndDate > x.StartDate).WithMessage("End date must be after start date.")
                 .When(x => x.StartDate.HasValue && x.EndDate.HasValue);
+
+            RuleFor(x => x)
+                .Must(x => RentalRules.IsLongEnough(x.StartDate, x.EndDate))
+                .WithMessage($"A stall must be rented for at least {RentalRules.MinDays} days.")
+                .When(x => x.StartDate.HasValue && x.EndDate.HasValue && x.EndDate > x.StartDate);
         }
     }
 }

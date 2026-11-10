@@ -22,6 +22,7 @@ namespace LuminaBox.Application.Dtos.Stall
         public string? MapRefId { get; set; }
         public string? NewProvinceName { get; set; }
         public string? NewWardName { get; set; }
+        public List<StallBookingResponse> Bookings { get; set; } = new();
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
     }

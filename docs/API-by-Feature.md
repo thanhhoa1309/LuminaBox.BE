@@ -61,7 +61,7 @@
 
 | Method | Route | Quyền | Ý nghĩa |
 |---|---|---|---|
-| GET | `api/stalls` | Public | Duyệt danh sách gian hàng (lọc trạng thái, tìm kiếm) — dùng khi User chọn thuê. |
+| GET | `api/stalls` | Public | Duyệt danh sách gian hàng (lọc trạng thái, tìm kiếm). Mỗi gian kèm `bookings` (ngày bắt đầu, kết thúc của hợp đồng `Confirmed` / `Active`) để lịch thuê biết ngày đã có người thuê. |
 | GET | `api/stalls/{id}` | Public | Chi tiết gian hàng (giá thuê, vị trí, trạng thái). |
 | POST | `api/stalls` | Manager | Tạo gian hàng mới (+ địa chỉ GHN OwnerType=Stall). |
 | PUT | `api/stalls/{id}` | Manager | Cập nhật thông tin gian hàng (partial). |
