@@ -952,6 +952,14 @@ namespace LuminaBox.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("GhnOrderCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("GhnStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
@@ -1018,6 +1026,8 @@ namespace LuminaBox.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AddressId");
+
+                    b.HasIndex("GhnOrderCode");
 
                     b.HasIndex("OrderCode")
                         .IsUnique()

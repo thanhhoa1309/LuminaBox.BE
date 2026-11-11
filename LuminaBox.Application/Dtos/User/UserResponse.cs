@@ -14,5 +14,8 @@ namespace LuminaBox.Application.Dtos.User
         public bool IsEmailVerified { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+        public Guid? OrganizerId { get; set; }
+        public string? OrganizerBrandName { get; set; }
+        public OrganizerStatus? OrganizerStatus { get; set; }
     }
 }

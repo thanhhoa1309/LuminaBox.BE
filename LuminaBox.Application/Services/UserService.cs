@@ -93,7 +93,10 @@ namespace LuminaBox.Application.Services
                     Status = u.Status,
                     IsEmailVerified = u.IsEmailVerified,
                     CreatedAt = u.CreatedAt,
-                    UpdatedAt = u.UpdatedAt
+                    UpdatedAt = u.UpdatedAt,
+                    OrganizerId = u.Organizer != null ? u.Organizer.Id : null,
+                    OrganizerBrandName = u.Organizer != null ? u.Organizer.BrandName : null,
+                    OrganizerStatus = u.Organizer != null ? u.Organizer.Status : null
                 })
                 .FirstOrDefaultAsync()
                 ?? throw ErrorHelper.NotFound("User not found.");
@@ -113,19 +116,7 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.Users.Update(user);
             await _unitOfWork.SaveChangesAsync();
 
-            return new UserResponse
-            {
-                Id = user.Id,
-                Email = user.Email,
-                FullName = user.FullName,
-                Phone = user.Phone,
-                Address = user.Address,
-                Role = user.Role,
-                Status = user.Status,
-                IsEmailVerified = user.IsEmailVerified,
-                CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
-            };
+            return await GetUserByDetail(userId);
         }
 
         public async Task<UserResponse> GetCurrentUserAsync()

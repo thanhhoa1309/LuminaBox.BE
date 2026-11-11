@@ -11,5 +11,6 @@ namespace LuminaBox.Application.Interface
     public interface IGhnClient
     {
         Task<decimal> CalculateFeeAsync(GhnFeeRequest request, CancellationToken cancellationToken = default);
+        Task<GhnCreateWaybillResponse> CreateWaybillAsync(GhnCreateWaybillRequest request, CancellationToken cancellationToken = default);
     }
 }

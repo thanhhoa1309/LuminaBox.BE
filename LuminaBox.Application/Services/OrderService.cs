@@ -19,6 +19,7 @@ namespace LuminaBox.Application.Services
         private readonly IClaimsService _claimsService;
         private readonly ICurrentTime _currentTime;
         private readonly IShippingFeeService _shippingFeeService;
+        private readonly IGhnClient _ghnClient;
         private readonly IVoucherService _voucherService;
         private readonly IPaymentService _paymentService;
         private readonly IWalletService _walletService;
@@ -30,6 +31,7 @@ namespace LuminaBox.Application.Services
             IClaimsService claimsService,
             ICurrentTime currentTime,
             IShippingFeeService shippingFeeService,
+            IGhnClient ghnClient,
             IVoucherService voucherService,
             IPaymentService paymentService,
             IWalletService walletService,
@@ -40,6 +42,7 @@ namespace LuminaBox.Application.Services
             _claimsService = claimsService;
             _currentTime = currentTime;
             _shippingFeeService = shippingFeeService;
+            _ghnClient = ghnClient;
             _voucherService = voucherService;
             _paymentService = paymentService;
             _walletService = walletService;
@@ -182,6 +185,7 @@ namespace LuminaBox.Application.Services
                     OrganizerDiscount = o.OrganizerDiscount,
                     ShippingFee = o.ShippingFee,
                     TotalAmount = o.TotalAmount,
+                    GhnOrderCode = o.GhnOrderCode,
                     ItemCount = o.Items.Sum(i => i.Quantity),
                     Status = o.Status,
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
@@ -259,6 +263,7 @@ namespace LuminaBox.Application.Services
                     OrganizerDiscount = o.OrganizerDiscount,
                     ShippingFee = o.ShippingFee,
                     TotalAmount = o.TotalAmount,
+                    GhnOrderCode = o.GhnOrderCode,
                     ItemCount = o.Items.Sum(i => i.Quantity),
                     Status = o.Status,
                     PaymentMethod = o.Payment != null ? o.Payment.Method : null,
@@ -305,6 +310,8 @@ namespace LuminaBox.Application.Services
                         OrganizerDiscount = o.OrganizerDiscount,
                         ShippingFee = o.ShippingFee,
                         TotalAmount = o.TotalAmount,
+                        GhnOrderCode = o.GhnOrderCode,
+                        GhnStatus = o.GhnStatus,
                         Status = o.Status,
                         CreatedAt = o.CreatedAt,
                         ConfirmedAt = o.ConfirmedAt,
@@ -653,6 +660,25 @@ namespace LuminaBox.Application.Services
 
             var order = await _unitOfWork.Orders.GetQueryable()
                 .Include(o => o.Organizer)
+                    .ThenInclude(org => org.User)
+                .Include(o => o.Payment)
+                .Include(o => o.Items)
+                    .ThenInclude(i => i.ProductItem)
+                        .ThenInclude(pi => pi!.Product)
+                .Include(o => o.Items)
+                    .ThenInclude(i => i.BoxItem)
+                .Include(o => o.Address)
+                    .ThenInclude(a => a!.Ward)
+                        .ThenInclude(w => w.District)
+                            .ThenInclude(d => d.Province)
+                .Include(o => o.PickupAddress)
+                    .ThenInclude(a => a!.Ward)
+                        .ThenInclude(w => w.District)
+                            .ThenInclude(d => d.Province)
+                .Include(o => o.Stall)
+                    .ThenInclude(s => s!.Ward)
+                        .ThenInclude(w => w.District)
+                            .ThenInclude(d => d.Province)
                 .FirstOrDefaultAsync(o => o.Id == id)
                 ?? throw ErrorHelper.NotFound("Order not found.");
 
@@ -662,10 +688,21 @@ namespace LuminaBox.Application.Services
             if (order.Status != OrderStatus.Confirmed)
                 throw ErrorHelper.Conflict("Only confirmed orders can be marked as delivering.");
 
+            if (order.FulfillmentType != FulfillmentType.Delivery)
+                throw ErrorHelper.Conflict("Only delivery orders can be shipped via GHN.");
+
+            if (!string.IsNullOrWhiteSpace(order.GhnOrderCode))
+                throw ErrorHelper.Conflict("A GHN waybill already exists for this order.");
+
+            var waybillRequest = BuildGhnCreateWaybillRequest(order);
+            var waybill = await _ghnClient.CreateWaybillAsync(waybillRequest);
+
             await _unitOfWork.ExecuteTransactionAsync(async () =>
             {
                 var previousStatus = order.Status;
                 order.Status = OrderStatus.Delivering;
+                order.GhnOrderCode = waybill.OrderCode;
+                order.GhnStatus = waybill.Status;
                 await _unitOfWork.Orders.Update(order);
 
                 await _unitOfWork.OrderStatusHistories.AddAsync(new OrderStatusHistory
@@ -1240,6 +1277,134 @@ namespace LuminaBox.Application.Services
                 return activeStocks[0];
 
             throw ErrorHelper.BadRequest($"StallId is required for box '{boxName}'.");
+        }
+
+        private static GhnCreateWaybillRequest BuildGhnCreateWaybillRequest(Order order)
+        {
+            var shipping = order.Address
+                ?? throw ErrorHelper.BadRequest("Shipping address is required to create a GHN waybill.");
+
+            if (shipping.Ward?.District?.GhnDistrictId is null || string.IsNullOrWhiteSpace(shipping.Ward.GhnWardCode))
+                throw ErrorHelper.BadRequest("This shipping address is not supported by GHN.", "E18.1");
+
+            string fromName;
+            string fromPhone;
+            string fromAddress;
+            int fromDistrictId;
+            string fromWardCode;
+
+            if (order.PickupAddress is not null)
+            {
+                var pickup = order.PickupAddress;
+                if (pickup.Ward?.District?.GhnDistrictId is null || string.IsNullOrWhiteSpace(pickup.Ward.GhnWardCode))
+                    throw ErrorHelper.BadRequest("The organizer pickup address is not supported by GHN.", "E18.1");
+
+                fromName = pickup.ContactName;
+                fromPhone = pickup.Phone;
+                fromAddress = FormatAddressLine(pickup);
+                fromDistrictId = pickup.Ward.District.GhnDistrictId.Value;
+                fromWardCode = pickup.Ward.GhnWardCode;
+            }
+            else if (order.Stall is not null)
+            {
+                var stall = order.Stall;
+                if (stall.Ward?.District?.GhnDistrictId is null || string.IsNullOrWhiteSpace(stall.Ward.GhnWardCode))
+                    throw ErrorHelper.BadRequest("The stall address is not supported by GHN.", "E18.1");
+
+                fromName = order.Organizer.BrandName;
+                fromPhone = order.Organizer.ContactPhone
+                    ?? order.Organizer.User.Phone
+                    ?? throw ErrorHelper.BadRequest("Organizer contact phone is required to create a GHN waybill.");
+                fromAddress = FormatStallAddress(stall);
+                fromDistrictId = stall.Ward.District.GhnDistrictId.Value;
+                fromWardCode = stall.Ward.GhnWardCode;
+            }
+            else
+            {
+                throw ErrorHelper.Conflict("The organizer has no pickup address.", "E18.2");
+            }
+
+            var packageWeight = 0;
+            var lengthCm = 0;
+            var widthCm = 0;
+            var heightCm = 0;
+            var items = new List<GhnCreateWaybillItemRequest>();
+
+            foreach (var line in order.Items)
+            {
+                if (line.ItemType == OrderItemType.Product && line.ProductItem is not null)
+                {
+                    var pi = line.ProductItem;
+                    packageWeight += pi.Weight * line.Quantity;
+                    lengthCm = Math.Max(lengthCm, (int)Math.Ceiling(pi.LengthCm));
+                    widthCm = Math.Max(widthCm, (int)Math.Ceiling(pi.WidthCm));
+                    heightCm += (int)Math.Ceiling(pi.HeightCm) * line.Quantity;
+                    items.Add(new GhnCreateWaybillItemRequest
+                    {
+                        Name = pi.Product?.Name ?? pi.Name,
+                        Quantity = line.Quantity,
+                        WeightGrams = pi.Weight
+                    });
+                }
+                else if (line.ItemType == OrderItemType.Box && line.BoxItem is not null)
+                {
+                    var box = line.BoxItem;
+                    packageWeight += box.Weight * line.Quantity;
+                    lengthCm = Math.Max(lengthCm, (int)Math.Ceiling(box.LengthCm));
+                    widthCm = Math.Max(widthCm, (int)Math.Ceiling(box.WidthCm));
+                    heightCm += (int)Math.Ceiling(box.HeightCm) * line.Quantity;
+                    items.Add(new GhnCreateWaybillItemRequest
+                    {
+                        Name = box.Name,
+                        Quantity = line.Quantity,
+                        WeightGrams = box.Weight
+                    });
+                }
+            }
+
+            if (items.Count == 0)
+                throw ErrorHelper.BadRequest("Order has no shippable items.");
+
+            var isCod = order.Payment?.Method == PaymentMethod.CashOnDelivery;
+            var codAmount = isCod ? (int)Math.Round(order.TotalAmount, MidpointRounding.AwayFromZero) : 0;
+
+            return new GhnCreateWaybillRequest
+            {
+                ClientOrderCode = order.OrderCode,
+                ToName = order.ReceiverName,
+                ToPhone = order.ReceiverPhone,
+                ToAddress = order.ShippingAddress ?? FormatAddressLine(shipping),
+                ToWardCode = shipping.Ward.GhnWardCode!,
+                ToDistrictId = shipping.Ward.District.GhnDistrictId!.Value,
+                FromName = fromName,
+                FromPhone = fromPhone,
+                FromAddress = fromAddress,
+                FromWardCode = fromWardCode,
+                FromDistrictId = fromDistrictId,
+                CodAmount = codAmount,
+                WeightGrams = packageWeight,
+                LengthCm = lengthCm,
+                WidthCm = widthCm,
+                HeightCm = heightCm,
+                Note = order.Note,
+                Items = items
+            };
+        }
+
+        private static string FormatAddressLine(Address address)
+        {
+            var ward = address.Ward;
+            var district = ward.District;
+            var province = district.Province;
+            return $"{address.AddressLine}, {ward.Name}, {district.Name}, {province.Name}";
+        }
+
+        private static string FormatStallAddress(Stall stall)
+        {
+            var ward = stall.Ward;
+            var district = ward.District;
+            var province = district.Province;
+            return $"{stall.AddressLine}, {ward.Name}, {district.Name}, {province.Name}";
         }
 
         private sealed class PreparedOrderLine

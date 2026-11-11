@@ -139,6 +139,23 @@ namespace LuminaBox.Application.Services
             await _unitOfWork.SaveChangesAsync();
         }
 
+        public async Task<LoginResponse> ChangePasswordAsync(ChangePasswordRequest request)
+        {
+            var userId = _claimsService.GetRequiredUserId();
+
+            var user = await _unitOfWork.Users.GetByIdAsync(userId)
+                ?? throw ErrorHelper.NotFound("User not found.");
+
+            if (!PasswordHash.VerifyPassword(request.CurrentPassword, user.PasswordHash))
+                throw ErrorHelper.BadRequest("Current password is incorrect.", "E1.6");
+
+            user.PasswordHash = PasswordHash.HashPassword(request.NewPassword);
+            await _unitOfWork.Users.Update(user);
+            await _unitOfWork.SaveChangesAsync();
+
+            return await GenerateTokensAsync(user);
+        }
+
         public async Task LogoutAsync()
         {
             var userId = _claimsService.GetRequiredUserId();

@@ -44,6 +44,7 @@ namespace LuminaBox.Api.Architecture
 
             services.SetupStripe(configuration);
             services.SetupGeography(configuration);
+            services.SetupFileStorage(configuration);
             services.SetupRealtime();
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -104,6 +105,9 @@ namespace LuminaBox.Api.Architecture
             services.AddScoped<IBoxItemService, BoxItemService>();
             services.AddScoped<IShippingFeeService, ShippingFeeService>();
             services.AddScoped<IGhnClient, GhnClient>();
+            services.AddScoped<IFileStorage, SupabaseFileStorage>();
+            services.AddScoped<IUploadService, UploadService>();
+            services.AddScoped<IOrganizerProfileService, OrganizerProfileService>();
             services.AddScoped<IVoucherService, VoucherService>();
             services.AddScoped<ICartService, CartService>();
             services.AddScoped<IOrderService, OrderService>();
@@ -154,6 +158,13 @@ namespace LuminaBox.Api.Architecture
                 client.Timeout = TimeSpan.FromMinutes(2);
             });
 
+            return services;
+        }
+
+        private static IServiceCollection SetupFileStorage(this IServiceCollection services, IConfiguration configuration)
+        {
+            services.Configure<SupabaseStorageSettings>(configuration.GetSection("Supabase"));
+            services.AddHttpClient(SupabaseFileStorage.ClientName, client => client.Timeout = TimeSpan.FromMinutes(1));
             return services;
         }
 

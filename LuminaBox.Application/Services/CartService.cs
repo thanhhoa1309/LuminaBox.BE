@@ -69,7 +69,8 @@ namespace LuminaBox.Application.Services
             if (existingItem is not null)
             {
                 var newQty = existingItem.Quantity + request.Quantity;
-                if (newQty > 1000)
+                //ch?n ??t quá nhi?u
+                if (newQty > 100)
                     throw ErrorHelper.BadRequest("Total quantity for this item in cart cannot exceed 1000.");
 
                 if (selectedStock.StockQuantity < newQty)
