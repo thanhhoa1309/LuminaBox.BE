@@ -26,9 +26,27 @@ services:
       dockerfile: LuminaBox.Api/Dockerfile
     environment:
       - ConnectionStrings__DefaultConnection=Host=luminabox.db;Port=5432;Database=LuminaBoxDb;Username=postgres;Password=postgres
+      - AiService__Address=http://luminabox.ai:8080
+      - AiService__ApiKey=${AI_SERVICE_API_KEY:-dev-ai-key}
     depends_on:
       luminabox.db:
         condition: service_healthy
+      luminabox.ai:
+        condition: service_started
+
+  luminabox.ai:
+    image: ${DOCKER_REGISTRY-}luminaboxai
+    build:
+      context: .
+      dockerfile: LuminaBox.AiService/Dockerfile
+    environment:
+      - ASPNETCORE_HTTP_PORTS=8080
+      # ngrok URL of the machine running Ollama, or the host's Ollama when it runs on this machine
+      - Ollama__BaseUrl=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - Ollama__Model=${OLLAMA_MODEL:-qwen3:8b}
+      - AiService__ApiKey=${AI_SERVICE_API_KEY:-dev-ai-key}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   luminabox-db-data:

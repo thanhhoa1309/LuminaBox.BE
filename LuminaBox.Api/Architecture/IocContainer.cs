@@ -46,6 +46,7 @@ namespace LuminaBox.Api.Architecture
             services.SetupGeography(configuration);
             services.SetupFileStorage(configuration);
             services.SetupRealtime();
+            services.SetupAiChat(configuration);
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
             services.AddScoped<IStripePaymentService, StripePaymentService>();
@@ -178,6 +179,30 @@ namespace LuminaBox.Api.Architecture
 
             services.AddScoped<SignalRRealtimePublisher>();
             services.AddScoped<IRealtimePublisher>(sp => sp.GetRequiredService<SignalRRealtimePublisher>());
+
+            return services;
+        }
+
+        private static IServiceCollection SetupAiChat(this IServiceCollection services, IConfiguration configuration)
+        {
+            var section = configuration.GetSection(AiChatSettings.SectionName);
+            services.Configure<AiChatSettings>(section);
+            var settings = section.Get<AiChatSettings>() ?? new AiChatSettings();
+
+            services
+                .AddGrpcClient<LuminaBox.Contracts.AiChat.AiChat.AiChatClient>(options =>
+                    options.Address = new Uri(settings.Address))
+                .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+                {
+                    // Keep long, quiet streams (model thinking, slow tools) from being dropped by proxies.
+                    KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
+                    KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
+                    EnableMultipleHttp2Connections = true,
+                });
+
+            services.AddScoped<IAiChatClient, GrpcAiChatClient>();
+            services.AddScoped<IAiChatService, AiChatService>();
 
             return services;
         }

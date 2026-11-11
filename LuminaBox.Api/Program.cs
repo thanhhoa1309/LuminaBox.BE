@@ -69,5 +69,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<AppHub>(AppHub.Route);
+app.MapHub<AiChatHub>(AiChatHub.Route);
 
 app.Run();
