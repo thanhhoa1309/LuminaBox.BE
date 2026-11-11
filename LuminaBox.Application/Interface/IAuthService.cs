@@ -11,6 +11,7 @@ namespace LuminaBox.Application.Interface
         Task<LoginResponse> RefreshTokenAsync(RefreshTokenRequest request);
         Task ForgotPasswordAsync(ForgotPasswordRequest request);
         Task ResetPasswordAsync(ResetPasswordRequest request);
+        Task<LoginResponse> ChangePasswordAsync(ChangePasswordRequest request);
         Task LogoutAsync();
     }
 }
