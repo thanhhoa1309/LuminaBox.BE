@@ -6,12 +6,14 @@ namespace LuminaBox.AiService.Tools;
 /// <summary>Per-turn data a tool may need (who is asking, from which page).</summary>
 public sealed class AiToolContext
 {
-    public AiToolContext(string turnId, string userId, string userRole, string clientRoute)
+    public AiToolContext(
+        string turnId, string userId, string userRole, string clientRoute, IReadOnlyList<GuideOption> guides)
     {
         TurnId = turnId;
         UserId = userId;
         UserRole = userRole;
         ClientRoute = clientRoute;
+        Guides = guides;
     }
 
     public string TurnId { get; }
@@ -22,6 +24,11 @@ public sealed class AiToolContext
 
     /// <summary>Page the user is on, empty when unknown.</summary>
     public string ClientRoute { get; }
+
+    /// <summary>
+    /// Screens the FE can lead this user to (its map minus excluded nodes, filtered by role). Empty = no guide tool.
+    /// </summary>
+    public IReadOnlyList<GuideOption> Guides { get; }
 
     /// <summary>
     /// Screen actions a tool asks the FE to perform. The orchestrator streams them right after the tool finishes.
@@ -50,4 +57,13 @@ public interface IAiTool
 
     /// <summary>Returns the result as text (usually JSON) for the model. Report bad input as a result, do not throw.</summary>
     Task<string> ExecuteAsync(AiToolContext context, JsonElement arguments, CancellationToken ct);
+
+    /// <summary>False = do not offer this tool in this turn at all.</summary>
+    bool IsAvailable(AiToolContext context) => true;
+
+    /// <summary>Description for this turn (a tool may list only what this user can use).</summary>
+    string GetDescription(AiToolContext context) => Description;
+
+    /// <summary>Argument schema for this turn (e.g. an enum narrowed to this user's options).</summary>
+    JsonElement GetParametersSchema(AiToolContext context) => ParametersSchema;
 }

@@ -35,6 +35,12 @@ namespace LuminaBox.Infrastructure.Service
                 UserRole = turn.UserRole ?? string.Empty,
                 ClientRoute = turn.ClientRoute ?? string.Empty,
             };
+            foreach (var guide in turn.Guides)
+            {
+                var option = new GuideOption { Id = guide.Id, Label = guide.Label, Description = guide.Description };
+                option.Params.AddRange(guide.Params.Select(p => new GuideParam { Name = p.Name, Description = p.Description }));
+                request.Guides.Add(option);
+            }
             request.Messages.AddRange(turn.Messages.Select(m => new ChatMessage
             {
                 Role = m.Role == AiChatRole.Assistant ? ChatRole.Assistant : ChatRole.User,
@@ -127,6 +133,9 @@ namespace LuminaBox.Infrastructure.Service
                     dto.Type = AiChatEventType.UiAction;
                     dto.ActionType = e.UiAction.Type;
                     dto.GuideId = e.UiAction.GuideId;
+                    dto.GuideParams = e.UiAction.Params.Count > 0
+                        ? new Dictionary<string, string>(e.UiAction.Params)
+                        : null;
                     break;
                 case ChatEvent.PayloadOneofCase.RoundReset:
                     dto.Type = AiChatEventType.RoundReset;

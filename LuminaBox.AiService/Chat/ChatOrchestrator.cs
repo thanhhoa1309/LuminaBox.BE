@@ -57,8 +57,15 @@ public sealed class ChatOrchestrator
 
         var guard = _options.StallGuard;
         var messages = BuildMessages(request);
-        var toolDefs = _tools.Values.Select(ToOllamaTool).ToList();
-        var toolContext = new AiToolContext(request.TurnId, request.UserId, request.UserRole, request.ClientRoute);
+        var toolContext = new AiToolContext(
+            request.TurnId, request.UserId, request.UserRole, request.ClientRoute,
+            request.Guides);
+
+        // Tools (and their options) can differ per user and per page, so they are resolved per turn.
+        var turnTools = _tools.Values
+            .Where(t => t.IsAvailable(toolContext))
+            .ToDictionary(t => t.Name, StringComparer.Ordinal);
+        var toolDefs = turnTools.Values.Select(t => ToOllamaTool(t, toolContext)).ToList();
         var promptTokens = 0;
         var completionTokens = 0;
 
@@ -110,7 +117,7 @@ public sealed class ChatOrchestrator
                     // Keep the assistant turn (content + tool calls, never thinking) so the model sees what it asked for.
                     messages.Add(new OllamaMessage { Role = "assistant", Content = text, ToolCalls = toolCalls });
                     for (var i = 0; i < toolCalls.Count; i++)
-                        await RunToolAndAppendAsync(toolCalls[i].Function, $"call_{round}_{i}", toolContext, messages, Emit, ct);
+                        await RunToolAndAppendAsync(toolCalls[i].Function, $"call_{round}_{i}", turnTools, toolContext, messages, Emit, ct);
                     continue;
                 }
 
@@ -142,7 +149,7 @@ public sealed class ChatOrchestrator
                 if (guard.ForcedRouting && !routed)
                 {
                     routed = true;
-                    var decision = await _router.DecideAsync(messages, _tools.Values.ToList(), ct);
+                    var decision = await _router.DecideAsync(messages, turnTools.Values.ToList(), toolContext, ct);
                     _logger.LogInformation("[AiChat] Turn {TurnId}: stall persisted, forced routing chose {Tool}.",
                         request.TurnId, decision.ToolName ?? "answer");
 
@@ -155,7 +162,7 @@ public sealed class ChatOrchestrator
                             Role = "assistant",
                             ToolCalls = new List<OllamaToolCall> { new() { Function = call } },
                         });
-                        await RunToolAndAppendAsync(call, $"call_{round}_forced", toolContext, messages, Emit, ct);
+                        await RunToolAndAppendAsync(call, $"call_{round}_forced", turnTools, toolContext, messages, Emit, ct);
                     }
                     else
                     {
@@ -195,17 +202,19 @@ public sealed class ChatOrchestrator
     }
 
     private async Task RunToolAndAppendAsync(
-        OllamaToolCallFunction call, string callId, AiToolContext context,
+        OllamaToolCallFunction call, string callId, IReadOnlyDictionary<string, IAiTool> tools, AiToolContext context,
         List<OllamaMessage> messages, Func<ChatEvent, Task> emit, CancellationToken ct)
     {
-        var result = await RunToolAsync(call, callId, context, emit, ct);
+        var result = await RunToolAsync(call, callId, tools, context, emit, ct);
         messages.Add(new OllamaMessage { Role = "tool", ToolName = call.Name, Content = result });
     }
 
     private async Task<string> RunToolAsync(
-        OllamaToolCallFunction call, string callId, AiToolContext context, Func<ChatEvent, Task> emit, CancellationToken ct)
+        OllamaToolCallFunction call, string callId, IReadOnlyDictionary<string, IAiTool> tools, AiToolContext context,
+        Func<ChatEvent, Task> emit, CancellationToken ct)
     {
-        if (!_tools.TryGetValue(call.Name, out var tool))
+        // Only tools offered in this turn can run, even if the model names another one.
+        if (!tools.TryGetValue(call.Name, out var tool))
         {
             await emit(new ChatEvent { ToolFinished = new ToolFinished { CallId = callId, Name = call.Name, Success = false } });
             return JsonSerializer.Serialize(new { error = $"Unknown tool '{call.Name}'." });
@@ -275,8 +284,13 @@ public sealed class ChatOrchestrator
 
     private static string Trim(string s) => s.Length <= 120 ? s : s[..120] + "…";
 
-    private static OllamaTool ToOllamaTool(IAiTool tool) => new()
+    private static OllamaTool ToOllamaTool(IAiTool tool, AiToolContext context) => new()
     {
-        Function = new OllamaFunction { Name = tool.Name, Description = tool.Description, Parameters = tool.ParametersSchema },
+        Function = new OllamaFunction
+        {
+            Name = tool.Name,
+            Description = tool.GetDescription(context),
+            Parameters = tool.GetParametersSchema(context),
+        },
     };
 }

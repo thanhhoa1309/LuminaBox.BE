@@ -38,6 +38,26 @@ namespace LuminaBox.Application.Dtos.AiChat
 
         /// <summary>Path of the page the user is on (e.g. <c>/</c>, <c>/account/profile</c>), without query string.</summary>
         public string? CurrentRoute { get; set; }
+
+        /// <summary>
+        /// Screens the FE can lead this user to (<c>useAvailableGuides()</c>): already filtered by role and FE exclusions.
+        /// The AI offers only these. Null or empty = no guide tool.
+        /// </summary>
+        public List<AiGuideOptionDto>? Guides { get; set; }
+    }
+
+    public class AiGuideOptionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public List<AiGuideParamDto> Params { get; set; } = new();
+    }
+
+    public class AiGuideParamDto
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
     }
 
     /// <summary>One item of the <c>StreamChat</c> stream. Fields not used by <see cref="Type"/> are null.</summary>
@@ -73,6 +93,9 @@ namespace LuminaBox.Application.Dtos.AiChat
 
         /// <summary>UiAction guide: id from the shared guide catalogue, e.g. <c>add_address</c>.</summary>
         public string? GuideId { get; set; }
+
+        /// <summary>UiAction guide parameters, e.g. <c>{ "query": "bánh nướng" }</c> for <c>search_products</c>.</summary>
+        public Dictionary<string, string>? GuideParams { get; set; }
     }
 
     /// <summary>What the BE sends to the AI service for one turn.</summary>
@@ -81,6 +104,7 @@ namespace LuminaBox.Application.Dtos.AiChat
         Guid UserId,
         string? UserRole,
         string? ClientRoute,
+        IReadOnlyList<AiGuideOptionDto> Guides,
         IReadOnlyList<AiChatMessageDto> Messages,
         bool EnableThinking);
 }

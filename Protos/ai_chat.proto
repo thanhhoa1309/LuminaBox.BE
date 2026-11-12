@@ -20,6 +20,22 @@ message ChatRequest {
   bool enable_thinking = 4;           // ask the model to stream its reasoning
   string client_route = 5;            // page the user is on, e.g. "/" or "/account/profile"
   string user_role = 6;               // User | Organization | Manager — filters what tools may offer
+  reserved 7, 8;                      // were available_guides / restrict_guides (ids only)
+  repeated GuideOption guides = 9;    // guides the FE can run for this user (map-based, role-filtered); empty = no guide tool
+}
+
+// One screen the assistant may lead the user to. Defined by the FE (guide-overrides.json), so the AI service has no
+// catalogue of its own; the FE already removed excluded targets and targets outside the user's role.
+message GuideOption {
+  string id = 1;
+  string label = 2;               // page name shown back to the model, e.g. "Sổ địa chỉ"
+  string description = 3;         // what the user wants to do (English, for the model)
+  repeated GuideParam params = 4; // all required
+}
+
+message GuideParam {
+  string name = 1;
+  string description = 2;
 }
 
 message ChatMessage {
@@ -52,8 +68,9 @@ message ChatEvent {
 // An action the FE performs itself. The model never names routes or elements: it only picks a guide id
 // from a fixed catalogue, and the FE maps that id to a page and a button.
 message UiAction {
-  string type = 1;      // guide
-  string guide_id = 2;  // e.g. add_address
+  string type = 1;                 // guide
+  string guide_id = 2;             // e.g. add_address
+  map<string, string> params = 3;  // guide parameters declared in the catalogue, e.g. { "query": "bánh nướng" }
 }
 
 // The content of the round that just ended was a preamble ("để mình xem…") before a tool call, or a stall.

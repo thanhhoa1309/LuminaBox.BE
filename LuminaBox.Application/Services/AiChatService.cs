@@ -13,6 +13,18 @@ namespace LuminaBox.Application.Services
     {
         public const int MaxMessages = 40;
         public const int MaxMessageLength = 4000;
+        // Guide texts go into the model's tool description, so they are capped to keep the prompt small.
+        public const int MaxGuides = 30;
+        public const int MaxGuideParams = 3;
+        public const int MaxGuideLabelLength = 60;
+        public const int MaxGuideDescriptionLength = 200;
+
+        private static bool IsIdentifier(string? value, int maxLength)
+            => !string.IsNullOrEmpty(value) && value.Length <= maxLength
+               && value.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_');
+
+        private static bool IsText(string? value, int maxLength)
+            => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength && !value.Any(char.IsControl);
 
         private readonly IAiChatClient _client;
         private readonly AiChatSettings _settings;
@@ -31,7 +43,7 @@ namespace LuminaBox.Application.Services
 
             var turn = new AiChatTurn(
                 Guid.NewGuid().ToString("N"), userId, userRole, request.CurrentRoute,
-                request.Messages, request.EnableThinking);
+                request.Guides ?? new List<AiGuideOptionDto>(), request.Messages, request.EnableThinking);
             return CoalesceAsync(_client.StreamChatAsync(turn, cancellationToken), turn.TurnId, cancellationToken);
         }
 
@@ -47,6 +59,28 @@ namespace LuminaBox.Application.Services
                 throw new ExceptionBadRequest($"Each message must have 1 to {MaxMessageLength} characters.");
             if (request.CurrentRoute is { } route && (route.Length > 200 || !route.StartsWith('/')))
                 throw new ExceptionBadRequest("CurrentRoute must be a path starting with '/' (max 200 characters).");
+            if (request.Guides is { } guides)
+                ValidateGuides(guides);
+        }
+
+        private static void ValidateGuides(List<AiGuideOptionDto> guides)
+        {
+            if (guides.Count > MaxGuides)
+                throw new ExceptionBadRequest($"Guides: at most {MaxGuides} items.");
+            if (guides.Select(g => g.Id).Distinct().Count() != guides.Count)
+                throw new ExceptionBadRequest("Guides: ids must be unique.");
+
+            foreach (var guide in guides)
+            {
+                if (!IsIdentifier(guide.Id, 64))
+                    throw new ExceptionBadRequest("Guides: id must be lower-case letters, digits and '_' (max 64).");
+                if (!IsText(guide.Label, MaxGuideLabelLength) || !IsText(guide.Description, MaxGuideDescriptionLength))
+                    throw new ExceptionBadRequest($"Guides: label (max {MaxGuideLabelLength}) and description (max {MaxGuideDescriptionLength}) are required, one line.");
+                if (guide.Params is null || guide.Params.Count > MaxGuideParams)
+                    throw new ExceptionBadRequest($"Guides: at most {MaxGuideParams} params.");
+                if (guide.Params.Any(p => !IsIdentifier(p.Name, 32) || !IsText(p.Description, MaxGuideDescriptionLength)))
+                    throw new ExceptionBadRequest("Guides: each param needs a name ([a-z0-9_], max 32) and a description.");
+            }
         }
 
         /// <summary>

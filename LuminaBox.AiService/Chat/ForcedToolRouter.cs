@@ -28,11 +28,11 @@ public sealed class ForcedToolRouter
     }
 
     internal async Task<RouterDecision> DecideAsync(
-        IReadOnlyList<OllamaMessage> conversation, IReadOnlyCollection<IAiTool> tools, CancellationToken ct)
+        IReadOnlyList<OllamaMessage> conversation, IReadOnlyCollection<IAiTool> tools, AiToolContext context, CancellationToken ct)
     {
         var messages = new List<OllamaMessage>(conversation)
         {
-            new() { Role = "user", Content = ToolUsePolicy.RouterInstruction + DescribeTools(tools) },
+            new() { Role = "user", Content = ToolUsePolicy.RouterInstruction + DescribeTools(tools, context) },
         };
 
         string raw;
@@ -69,12 +69,12 @@ public sealed class ForcedToolRouter
         return new RouterDecision(null, EmptyObject);
     }
 
-    private static string DescribeTools(IEnumerable<IAiTool> tools)
+    private static string DescribeTools(IEnumerable<IAiTool> tools, AiToolContext context)
     {
         var sb = new StringBuilder();
         foreach (var t in tools)
-            sb.Append("- ").Append(t.Name).Append(": ").Append(t.Description)
-              .Append(" Arguments schema: ").Append(t.ParametersSchema.GetRawText()).Append('\n');
+            sb.Append("- ").Append(t.Name).Append(": ").Append(t.GetDescription(context))
+              .Append(" Arguments schema: ").Append(t.GetParametersSchema(context).GetRawText()).Append('\n');
         return sb.ToString();
     }
 

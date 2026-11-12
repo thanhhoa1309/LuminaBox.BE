@@ -20,9 +20,14 @@ public sealed class GetCurrentTimeTool : IAiTool
         { "type": "object", "properties": {}, "required": [] }
         """).RootElement.Clone();
 
+    // Small models translate English day names wrongly ("Wednesday" → "thứ Ba"): hand them the Vietnamese text.
+    private static readonly string[] VietnameseDays = ["Chủ nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+
     public Task<string> ExecuteAsync(AiToolContext context, JsonElement arguments, CancellationToken ct)
     {
         var now = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, VietnamTime);
-        return Task.FromResult(JsonSerializer.Serialize(new { now = now.ToString("yyyy-MM-dd HH:mm"), dayOfWeek = now.DayOfWeek.ToString() }));
+        return Task.FromResult(JsonSerializer.Serialize(
+            new { now = now.ToString("HH:mm dd/MM/yyyy"), dayOfWeek = VietnameseDays[(int)now.DayOfWeek] },
+            new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
     }
 }
