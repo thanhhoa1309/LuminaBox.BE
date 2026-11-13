@@ -41,6 +41,7 @@ message GuideParam {
 message ChatMessage {
   ChatRole role = 1;
   string content = 2;
+  string guide_id = 3;  // assistant only: the screen offered with this answer (guide_user call), empty when none
 }
 
 enum ChatRole {

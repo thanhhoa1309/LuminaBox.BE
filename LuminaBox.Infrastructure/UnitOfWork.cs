@@ -81,6 +81,8 @@ namespace LuminaBox.Infrastructure
         public IGenericRepository<District> Districts => Repository<District>();
         public IGenericRepository<Ward> Wards => Repository<Ward>();
         public IGenericRepository<Address> Addresses => Repository<Address>();
+        public IGenericRepository<ChatRoom> ChatRooms => Repository<ChatRoom>();
+        public IGenericRepository<ChatMessage> ChatMessages => Repository<ChatMessage>();
 
         public async Task<int> SaveChangesAsync()
         {

@@ -43,4 +43,11 @@ public sealed class StallGuardOptions
     /// <summary>Shown when every attempt still stalls.</summary>
     public string FallbackMessage { get; set; } =
         "Xin lỗi, mình chưa lấy được thông tin lúc này. Bạn hỏi lại giúp mình nhé.";
+
+    /// <summary>
+    /// Shown instead of a retry when the model goes silent after offering a screen: the offer itself is the answer.
+    /// <c>{0}</c> = the screen's label.
+    /// </summary>
+    public string GuideOfferedMessage { get; set; } =
+        "Bạn bấm \"Mở trang\" bên dưới, mình sẽ dẫn bạn tới {0} nhé.";
 }

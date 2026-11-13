@@ -26,13 +26,20 @@ namespace LuminaBox.Application.Dtos.AiChat
     {
         public AiChatRole Role { get; set; }
         public string Content { get; set; } = string.Empty;
+
+        /// <summary>Assistant only: screen offered with this answer, so the AI sees it came from a tool call.</summary>
+        public string? GuideId { get; set; }
     }
 
-    /// <summary>Argument of the hub method <c>StreamChat</c>.</summary>
+    /// <summary>
+    /// Argument of the hub method <c>StreamChat</c>. The history is read from the room on the server;
+    /// the client only sends the new question.
+    /// </summary>
     public class AiChatRequest
     {
-        /// <summary>Conversation so far, oldest first; the last message must be the user's new question.</summary>
-        public List<AiChatMessageDto> Messages { get; set; } = new();
+        public Guid RoomId { get; set; }
+
+        public string Message { get; set; } = string.Empty;
 
         public bool EnableThinking { get; set; } = true;
 
@@ -75,6 +82,9 @@ namespace LuminaBox.Application.Dtos.AiChat
         public string? ToolName { get; set; }
         public string? DisplayText { get; set; }
         public bool? Success { get; set; }
+
+        /// <summary>Done: id of the stored assistant message (null when nothing was stored).</summary>
+        public Guid? MessageId { get; set; }
 
         /// <summary>Done.</summary>
         public string? FinishReason { get; set; }

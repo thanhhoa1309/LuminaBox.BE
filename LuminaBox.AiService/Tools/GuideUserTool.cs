@@ -4,8 +4,8 @@ using LuminaBox.Contracts.AiChat;
 namespace LuminaBox.AiService.Tools;
 
 /// <summary>
-/// Leads the user to a screen: the FE opens the page (with parameters such as a search text) and highlights the
-/// part they need. The options come from the FE with every request (<see cref="AiToolContext.Guides"/>), already
+/// Offers to lead the user to a screen: the FE shows a confirm button and, if pressed, opens the page (with
+/// parameters such as a search text) and highlights the part they need. The options come from the FE with every request (<see cref="AiToolContext.Guides"/>), already
 /// filtered by the user's role and the FE's exclusions; this service keeps no catalogue of its own.
 /// Guides only move the user around the UI: real permissions are still enforced by the BE.
 /// </summary>
@@ -13,11 +13,25 @@ public sealed class GuideUserTool : IAiTool
 {
     private const int MaxParamLength = 100;
 
-    public string Name => "guide_user";
+    public const string ToolName = "guide_user";
+
+    public string Name => ToolName;
+
+    /// <summary>Tool result for an offered screen (also used to rebuild past calls in the history).</summary>
+    public static string OfferedResult(string guideId, object? parameters = null, GuideOption? option = null) =>
+        Json(new
+        {
+            status = "offered",
+            guide = guideId,
+            page = option?.Label,
+            purpose = option?.Description,
+            @params = parameters,
+            next = "Now explain the steps on that screen, then mention the \"Mở trang\" button.",
+        });
 
     public string Description => BuildDescription([]);
 
-    public string DisplayText => "Đang hướng đến trang cho bạn…";
+    public string DisplayText => "Đang chuẩn bị đường dẫn cho bạn…";
 
     public JsonElement ParametersSchema => BuildSchema([]);
 
@@ -47,7 +61,7 @@ public sealed class GuideUserTool : IAiTool
         }
 
         context.UiActions.Add(action);
-        return Task.FromResult(Json(new { status = "shown", page = guide.Label, @params = action.Params }));
+        return Task.FromResult(OfferedResult(guide.Id, action.Params, guide));
     }
 
     private static string? ReadString(JsonElement arguments, string name)
@@ -70,12 +84,12 @@ public sealed class GuideUserTool : IAiTool
 
     private static string BuildDescription(IEnumerable<GuideOption> guides) =>
         "Open the right page of the LuminaBox website for the user and highlight the part they need. " +
-        "Use it when the user asks WHERE or HOW to do something on the website, or asks you to find / search products, " +
-        "instead of describing the steps. " +
-        "If the user clearly wants to go there (\"ở đâu\", \"chỉ mình\", \"dẫn mình\", \"mở giúp\", \"tìm giúp\"), call it right away. " +
-        "If it is unclear whether they want to be taken there, first offer in one short question " +
-        "(e.g. \"Mình dẫn bạn tới đó nhé?\") and call it after they agree. " +
-        "After calling it, say in one short sentence that the page is open. " +
+        "Use it when the user asks WHERE or HOW to do something on the website, or asks you to find / search products. " +
+        "Call it directly, without asking first: the website shows the user an \"Mở trang\" button and only goes there if they press it. " +
+        "After calling it, still answer the question: say in 2-4 short steps what the user does on that screen " +
+        "(what to press, what to fill in, how to finish), using the option's description and what the user told you, " +
+        "then end with one line that they can press \"Mở trang\" below. Never say the page is already open. " +
+        "Do not invent field names or buttons you are not sure about; keep those steps general instead. " +
         "Options: " + string.Join("; ", guides.Select(Describe));
 
     private static string Describe(GuideOption g) => g.Params.Count == 0

@@ -30,11 +30,7 @@ namespace LuminaBox.Application.Services
                     && p.Organizer.Status == OrganizerStatus.Active
                     && p.Items.Any());
 
-            if (!string.IsNullOrWhiteSpace(filter.Search))
-            {
-                var keyword = filter.Search.Trim().ToLower();
-                query = query.Where(p => p.Name.ToLower().Contains(keyword));
-            }
+            query = ApplySearch(query, filter.Search);
 
             if (filter.CategoryId.HasValue)
                 query = query.Where(p => p.Items.Any(i => i.CategoryId == filter.CategoryId.Value));
@@ -84,11 +80,7 @@ namespace LuminaBox.Application.Services
                 .AsNoTracking()
                 .Where(p => p.OrganizerId == organizer.Id);
 
-            if (!string.IsNullOrWhiteSpace(filter.Search))
-            {
-                var keyword = filter.Search.Trim().ToLower();
-                query = query.Where(p => p.Name.ToLower().Contains(keyword));
-            }
+            query = ApplySearch(query, filter.Search);
 
             if (filter.Status.HasValue)
                 query = query.Where(p => p.Status == filter.Status.Value);
@@ -222,6 +214,28 @@ namespace LuminaBox.Application.Services
 
             foreach (var product in products)
                 product.Items = byProduct[product.Id].ToList();
+        }
+
+        /// <summary>
+        /// Every word of the search must appear somewhere in the product: its name or description, the shop name,
+        /// or one of its items (item name, filling, cake category). So "bánh nhân thập cẩm" finds a product whose
+        /// item uses the "Thập cẩm" filling even though the product name says nothing about it.
+        /// </summary>
+        private static IQueryable<Product> ApplySearch(IQueryable<Product> query, string? search)
+        {
+            foreach (var term in SearchTerms.Split(search))
+            {
+                query = query.Where(p =>
+                    p.Name.ToLower().Contains(term)
+                    || (p.Description != null && p.Description.ToLower().Contains(term))
+                    || p.Organizer.BrandName.ToLower().Contains(term)
+                    || p.Items.Any(i =>
+                        i.Name.ToLower().Contains(term)
+                        || i.Filling.Name.ToLower().Contains(term)
+                        || i.Category.Name.ToLower().Contains(term)));
+            }
+
+            return query;
         }
 
         private static IQueryable<Product> ApplySort(IQueryable<Product> query, string? sortBy, bool isDescending)

@@ -45,6 +45,7 @@ namespace LuminaBox.Infrastructure.Service
             {
                 Role = m.Role == AiChatRole.Assistant ? ChatRole.Assistant : ChatRole.User,
                 Content = m.Content,
+                GuideId = m.GuideId ?? string.Empty,
             }));
 
             var headers = new Metadata();
@@ -83,7 +84,6 @@ namespace LuminaBox.Infrastructure.Service
                     });
                     break;
                 }
-
                 if (Map(stream.Current) is { } e)
                     yield return e;
             }

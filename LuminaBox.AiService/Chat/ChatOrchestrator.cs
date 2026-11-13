@@ -29,6 +29,8 @@ public sealed class ChatOrchestrator
     private readonly AiServiceOptions _options;
     private readonly ILogger<ChatOrchestrator> _logger;
 
+    private string GuideOfferedPrefix => _options.StallGuard.GuideOfferedMessage.Split("{0}")[0];
+
     public ChatOrchestrator(
         OllamaChatClient llm,
         ForcedToolRouter router,
@@ -72,6 +74,7 @@ public sealed class ChatOrchestrator
         var nudgesLeft = guard.MaxNudges;
         var routed = false;
         var toolsDisabled = false; // set when forced routing decided "answer without tools"
+        var explainAsked = false;
 
         try
         {
@@ -123,10 +126,36 @@ public sealed class ChatOrchestrator
 
                 // ── Final answer? ─────────────────────────────────────────────────
                 // Also checked when tools were withdrawn after forced routing: a promise there is still useless.
-                var stalled = guard.Enabled && toolDefs.Count > 0 && _stallDetector.IsStall(text);
+                // "Bấm nút bên dưới" without a guide_user call: no button exists, so it is a stall too.
+                var phantomButton = toolContext.OfferedGuideId is null
+                                    && turnTools.ContainsKey(GuideUserTool.ToolName)
+                                    && StallDetector.MentionsGuideButton(text);
+                var stalled = guard.Enabled && toolDefs.Count > 0 && (phantomButton || _stallDetector.IsStall(text));
                 if (!stalled)
                 {
                     await EmitDone(last?.DoneReason ?? "stop");
+                    return;
+                }
+
+                // qwen often goes silent after a tool result. Once a screen is offered, ask (once, without tools, so it
+                // cannot offer it again) for the explanation of the steps; only if it stays silent close with a short line.
+                if (toolContext.OfferedGuideId is { } guideId && string.IsNullOrWhiteSpace(text))
+                {
+                    if (!explainAsked)
+                    {
+                        explainAsked = true;
+                        toolsDisabled = true;
+                        _logger.LogInformation("[AiChat] Turn {TurnId}: empty reply after offering {Guide}, asking for the steps.",
+                            request.TurnId, guideId);
+                        messages.Add(new OllamaMessage { Role = "user", Content = ToolUsePolicy.ExplainOfferedGuide });
+                        continue;
+                    }
+
+                    var label = toolContext.Guides.FirstOrDefault(g => g.Id == guideId)?.Label ?? "trang đó";
+                    _logger.LogInformation("[AiChat] Turn {TurnId}: still empty after offering {Guide}, closing with the offer.",
+                        request.TurnId, guideId);
+                    await Emit(new ChatEvent { Content = new TextDelta { Text = string.Format(guard.GuideOfferedMessage, label) } });
+                    await EmitDone("guide_offered");
                     return;
                 }
 
@@ -142,7 +171,7 @@ public sealed class ChatOrchestrator
                     nudgesLeft--;
                     _logger.LogInformation("[AiChat] Turn {TurnId}: stall in round {Round}, nudging. Reply: {Reply}",
                         request.TurnId, round, Trim(text));
-                    messages.Add(new OllamaMessage { Role = "user", Content = ToolUsePolicy.Nudge });
+                    messages.Add(new OllamaMessage { Role = "user", Content = phantomButton ? ToolUsePolicy.PhantomGuideNudge : ToolUsePolicy.Nudge });
                     continue;
                 }
 
@@ -176,7 +205,10 @@ public sealed class ChatOrchestrator
             }
 
             _logger.LogWarning("[AiChat] Turn {TurnId}: no usable answer after all attempts, sending fallback.", request.TurnId);
-            await Emit(new ChatEvent { Content = new TextDelta { Text = guard.FallbackMessage } });
+            var fallback = toolContext.OfferedGuideId is { } offered
+                ? string.Format(guard.GuideOfferedMessage, toolContext.Guides.FirstOrDefault(g => g.Id == offered)?.Label ?? "trang đó")
+                : guard.FallbackMessage;
+            await Emit(new ChatEvent { Content = new TextDelta { Text = fallback } });
             await EmitDone("stall_fallback");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -228,7 +260,11 @@ public sealed class ChatOrchestrator
             await emit(new ChatEvent { ToolFinished = new ToolFinished { CallId = callId, Name = tool.Name, Success = true } });
 
             foreach (var action in context.UiActions)
+            {
                 await emit(new ChatEvent { UiAction = action });
+                if (action.Type == "guide")
+                    context.OfferedGuideId = action.GuideId;
+            }
             context.UiActions.Clear();
 
             return result;
@@ -262,8 +298,25 @@ public sealed class ChatOrchestrator
                     messages.Add(new OllamaMessage { Role = "user", Content = m.Content });
                     break;
 
-                // A stall reply left in history teaches the model to stall again (it imitates its own past turns).
-                case ChatRole.Assistant when _options.StallGuard.Enabled && _stallDetector.IsStall(m.Content):
+                // Only the final text is stored, so the guide_user call behind "bấm nút bên dưới" is rebuilt here;
+                // otherwise the model copies the sentence in later turns without calling the tool (no button appears).
+                case ChatRole.Assistant when !string.IsNullOrEmpty(m.GuideId):
+                    var call = new OllamaToolCallFunction
+                    {
+                        Name = GuideUserTool.ToolName,
+                        Arguments = JsonSerializer.SerializeToElement(new { guide = m.GuideId }),
+                    };
+                    messages.Add(new OllamaMessage { Role = "assistant", Content = string.Empty, ToolCalls = new List<OllamaToolCall> { new() { Function = call } } });
+                    messages.Add(new OllamaMessage { Role = "tool", ToolName = GuideUserTool.ToolName, Content = GuideUserTool.OfferedResult(m.GuideId) });
+                    // The fixed "press the button" line teaches the model to answer with it again: keep only real answers.
+                    if (!m.Content.StartsWith(GuideOfferedPrefix, StringComparison.Ordinal))
+                        messages.Add(new OllamaMessage { Role = "assistant", Content = m.Content });
+                    break;
+
+                // A stall reply (or a "press the button" reply with no button behind it) left in history
+                // teaches the model to repeat it: it imitates its own past turns.
+                case ChatRole.Assistant when _options.StallGuard.Enabled
+                                             && (_stallDetector.IsStall(m.Content) || StallDetector.MentionsGuideButton(m.Content)):
                     dropped++;
                     break;
 

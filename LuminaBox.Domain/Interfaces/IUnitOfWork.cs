@@ -45,6 +45,8 @@ namespace LuminaBox.Domain.Interfaces
         IGenericRepository<District> Districts { get; }
         IGenericRepository<Ward> Wards { get; }
         IGenericRepository<Address> Addresses { get; }
+        IGenericRepository<ChatRoom> ChatRooms { get; }
+        IGenericRepository<ChatMessage> ChatMessages { get; }
 
         Task<int> SaveChangesAsync();
 

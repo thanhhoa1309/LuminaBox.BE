@@ -199,10 +199,18 @@ namespace LuminaBox.Api.Architecture
                     KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
                     KeepAlivePingPolicy = HttpKeepAlivePingPolicy.WithActiveRequests,
                     EnableMultipleHttp2Connections = true,
+                })
+                .ConfigureChannel(options =>
+                {
+                    // After a failed connect the channel fails calls fast until its next retry; the default
+                    // backoff grows to 2 min, so a restarted AI service stayed "offline" that long.
+                    options.InitialReconnectBackoff = TimeSpan.FromSeconds(1);
+                    options.MaxReconnectBackoff = TimeSpan.FromSeconds(5);
                 });
 
             services.AddScoped<IAiChatClient, GrpcAiChatClient>();
             services.AddScoped<IAiChatService, AiChatService>();
+            services.AddScoped<IChatRoomService, ChatRoomService>();
 
             return services;
         }

@@ -52,6 +52,8 @@ namespace LuminaBox.Infrastructure.Persistence
         public DbSet<District> Districts => Set<District>();
         public DbSet<Ward> Wards => Set<Ward>();
         public DbSet<Address> Addresses => Set<Address>();
+        public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
+        public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
         protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
         {
@@ -81,7 +83,8 @@ namespace LuminaBox.Infrastructure.Persistence
             configurationBuilder.Properties<NotificationChannel>().HaveConversion<string>();
             configurationBuilder.Properties<SendStatus>().HaveConversion<string>();
             configurationBuilder.Properties<OtpPurpose>().HaveConversion<string>();
-            configurationBuilder.Properties<AddressType>().HaveConversion<string>();        }
+            configurationBuilder.Properties<AddressType>().HaveConversion<string>();
+            configurationBuilder.Properties<ChatMessageRole>().HaveConversion<string>();        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -699,6 +702,28 @@ namespace LuminaBox.Infrastructure.Persistence
 
                 e.HasIndex(x => new { x.UserId, x.IsRead });
                 e.HasIndex(x => new { x.EntityType, x.EntityId });
+            });
+
+            modelBuilder.Entity<ChatRoom>(e =>
+            {
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId);
+
+                e.Property(x => x.Title).HasMaxLength(100);
+
+                e.HasIndex(x => new { x.UserId, x.LastMessageAt }).HasFilter(NotDeletedFilter);
+            });
+
+            modelBuilder.Entity<ChatMessage>(e =>
+            {
+                e.HasOne(x => x.ChatRoom)
+                    .WithMany(r => r.Messages)
+                    .HasForeignKey(x => x.ChatRoomId);
+
+                e.Property(x => x.GuideId).HasMaxLength(64);
+
+                e.HasIndex(x => new { x.ChatRoomId, x.CreatedAt });
             });
 
             modelBuilder.Entity<EmailOtp>(e =>

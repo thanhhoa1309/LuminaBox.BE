@@ -34,6 +34,9 @@ public sealed class AiToolContext
     /// Screen actions a tool asks the FE to perform. The orchestrator streams them right after the tool finishes.
     /// </summary>
     public List<UiAction> UiActions { get; } = new();
+
+    /// <summary>Last screen offered to the user in this turn (guide id), null when none.</summary>
+    public string? OfferedGuideId { get; set; }
 }
 
 /// <summary>

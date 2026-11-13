@@ -27,7 +27,15 @@ public sealed partial class StallDetector
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex WillFetchRegex();
 
+    // "bấm nút bên dưới", "nhấn vào nút Mở trang", "click the button below": only true when a screen was offered.
+    [GeneratedRegex(@"(nút|button)\s+(\S+\s+){0,4}?(bên dưới|phía dưới|ở dưới|dưới đây|below)|(bấm|nhấn|click)\s+(vào\s+)?""?mở trang",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex GuideButtonRegex();
+
     private readonly StallGuardOptions _options;
+
+    /// <summary>The reply points the user to the "open page" button of a guide.</summary>
+    public static bool MentionsGuideButton(string? reply) => !string.IsNullOrWhiteSpace(reply) && GuideButtonRegex().IsMatch(reply);
 
     public StallDetector(IOptions<AiServiceOptions> options) => _options = options.Value.StallGuard;
 

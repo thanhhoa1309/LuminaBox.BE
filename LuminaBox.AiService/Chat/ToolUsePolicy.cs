@@ -23,6 +23,16 @@ internal static class ToolUsePolicy
         "[System notice] Your last reply only announced an action and called no tool, so the user received nothing. " +
         "Do it now: call the needed tool in this reply, or give the complete final answer. Do not announce anything.";
 
+    public const string PhantomGuideNudge =
+        "[System notice] Your last reply tells the user to press a button below, but you did not call guide_user, " +
+        "so no button is shown. Call guide_user now with the right screen, or answer again without mentioning a button.";
+
+    public const string ExplainOfferedGuide =
+        "[System notice] The \"Mở trang\" button is already shown to the user, but your reply was empty. " +
+        "Answer the user's question now in Vietnamese: 2-4 short steps of what they do on that screen " +
+        "(what to press, what to fill in, how to finish), then one line that they can press \"Mở trang\" below. " +
+        "Do not say the page is already open and do not invent field names you are not sure about.";
+
     public const string AnswerWithoutTools =
         "[System notice] No tool is needed. Give the complete final answer now with what you already know.";
 

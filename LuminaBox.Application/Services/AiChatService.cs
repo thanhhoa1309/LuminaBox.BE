@@ -5,14 +5,20 @@ using LuminaBox.Application.Commons;
 using LuminaBox.Application.Dtos.AiChat;
 using LuminaBox.Application.Exceptions;
 using LuminaBox.Application.Interface;
+using LuminaBox.Domain.Entities;
+using LuminaBox.Domain.Enums;
+using LuminaBox.Domain.Interfaces;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace LuminaBox.Application.Services
 {
     public class AiChatService : IAiChatService
     {
-        public const int MaxMessages = 40;
+        /// <summary>Stored messages sent back to the model as context (newest ones).</summary>
+        public const int HistoryMessages = 20;
         public const int MaxMessageLength = 4000;
+        public const int RoomTitleLength = 60;
         // Guide texts go into the model's tool description, so they are capped to keep the prompt small.
         public const int MaxGuides = 30;
         public const int MaxGuideParams = 3;
@@ -28,11 +34,15 @@ namespace LuminaBox.Application.Services
 
         private readonly IAiChatClient _client;
         private readonly AiChatSettings _settings;
+        private readonly IUnitOfWork _unitOfWork;
+        private readonly ICurrentTime _currentTime;
 
-        public AiChatService(IAiChatClient client, IOptions<AiChatSettings> settings)
+        public AiChatService(IAiChatClient client, IOptions<AiChatSettings> settings, IUnitOfWork unitOfWork, ICurrentTime currentTime)
         {
             _client = client;
             _settings = settings.Value;
+            _unitOfWork = unitOfWork;
+            _currentTime = currentTime;
         }
 
         public IAsyncEnumerable<AiChatStreamEvent> StreamChat(Guid userId, string? userRole, AiChatRequest request, CancellationToken cancellationToken)
@@ -40,23 +50,97 @@ namespace LuminaBox.Application.Services
             // Not an iterator on purpose: validation errors surface when the hub calls this method,
             // before the stream starts, so the client gets a clear error instead of a broken stream.
             Validate(request);
+            return RunTurnAsync(userId, userRole, request, cancellationToken);
+        }
 
+        /// <summary>
+        /// Loads the room history, stores the question, streams the answer and stores the final text on <c>Done</c>
+        /// (content after the last <c>RoundReset</c>; thinking is never stored). A cancelled or failed turn stores no answer.
+        /// </summary>
+        private async IAsyncEnumerable<AiChatStreamEvent> RunTurnAsync(
+            Guid userId, string? userRole, AiChatRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var turnId = Guid.NewGuid().ToString("N");
+            var room = await _unitOfWork.ChatRooms.FirstOrDefaultAsync(r => r.Id == request.RoomId && r.UserId == userId);
+            if (room is null)
+            {
+                yield return new AiChatStreamEvent
+                {
+                    TurnId = turnId, Seq = 1, Type = AiChatEventType.Error,
+                    ErrorCode = "room_not_found", ErrorMessage = "Không tìm thấy cuộc trò chuyện.",
+                };
+                yield break;
+            }
+
+            var history = await _unitOfWork.ChatMessages.GetQueryable()
+                .AsNoTracking()
+                .Where(m => m.ChatRoomId == room.Id && m.RolledBackAt == null)
+                .OrderByDescending(m => m.CreatedAt)
+                .Take(HistoryMessages)
+                .Select(m => new AiChatMessageDto
+                {
+                    Role = m.Role == ChatMessageRole.Assistant ? AiChatRole.Assistant : AiChatRole.User,
+                    Content = m.Content,
+                    GuideId = m.GuideId,
+                })
+                .ToListAsync(cancellationToken);
+            history.Reverse();
+
+            var question = request.Message.Trim();
+            await _unitOfWork.ChatMessages.AddAsync(new ChatMessage { ChatRoomId = room.Id, Role = ChatMessageRole.User, Content = question });
+            if (room.Title == ChatRoomService.DefaultTitle)
+                room.Title = ChatRoomService.CleanTitle(question.Length <= RoomTitleLength ? question : question[..RoomTitleLength] + "…") ?? room.Title;
+            room.LastMessageAt = _currentTime.GetCurrentTime();
+            await _unitOfWork.ChatRooms.Update(room);
+            await _unitOfWork.SaveChangesAsync();
+
+            history.Add(new AiChatMessageDto { Role = AiChatRole.User, Content = question });
             var turn = new AiChatTurn(
-                Guid.NewGuid().ToString("N"), userId, userRole, request.CurrentRoute,
-                request.Guides ?? new List<AiGuideOptionDto>(), request.Messages, request.EnableThinking);
-            return CoalesceAsync(_client.StreamChatAsync(turn, cancellationToken), turn.TurnId, cancellationToken);
+                turnId, userId, userRole, request.CurrentRoute,
+                request.Guides ?? new List<AiGuideOptionDto>(), history, request.EnableThinking);
+
+            var answer = new StringBuilder();
+            string? guideId = null;
+            await foreach (var e in CoalesceAsync(_client.StreamChatAsync(turn, cancellationToken), turnId, cancellationToken))
+            {
+                switch (e.Type)
+                {
+                    case AiChatEventType.Content:
+                        answer.Append(e.Text);
+                        break;
+                    case AiChatEventType.RoundReset:
+                        answer.Clear();
+                        break;
+                    case AiChatEventType.UiAction when e.GuideId is not null:
+                        guideId = e.GuideId;
+                        break;
+                    case AiChatEventType.Done:
+                        e.MessageId = await SaveAnswerAsync(room, answer.ToString().Trim(), guideId);
+                        break;
+                }
+                yield return e;
+            }
+        }
+
+        private async Task<Guid?> SaveAnswerAsync(ChatRoom room, string answer, string? guideId)
+        {
+            if (answer.Length == 0 && guideId is null)
+                return null;
+
+            var message = new ChatMessage { ChatRoomId = room.Id, Role = ChatMessageRole.Assistant, Content = answer, GuideId = guideId };
+            await _unitOfWork.ChatMessages.AddAsync(message);
+            room.LastMessageAt = _currentTime.GetCurrentTime();
+            await _unitOfWork.ChatRooms.Update(room);
+            await _unitOfWork.SaveChangesAsync();
+            return message.Id;
         }
 
         private static void Validate(AiChatRequest request)
         {
-            if (request.Messages is null || request.Messages.Count == 0)
-                throw new ExceptionBadRequest("Messages must not be empty.");
-            if (request.Messages.Count > MaxMessages)
-                throw new ExceptionBadRequest($"At most {MaxMessages} messages per request.");
-            if (request.Messages[^1].Role != AiChatRole.User)
-                throw new ExceptionBadRequest("The last message must be from the user.");
-            if (request.Messages.Any(m => string.IsNullOrWhiteSpace(m.Content) || m.Content.Length > MaxMessageLength))
-                throw new ExceptionBadRequest($"Each message must have 1 to {MaxMessageLength} characters.");
+            if (request.RoomId == Guid.Empty)
+                throw new ExceptionBadRequest("RoomId is required.");
+            if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > MaxMessageLength)
+                throw new ExceptionBadRequest($"Message must have 1 to {MaxMessageLength} characters.");
             if (request.CurrentRoute is { } route && (route.Length > 200 || !route.StartsWith('/')))
                 throw new ExceptionBadRequest("CurrentRoute must be a path starting with '/' (max 200 characters).");
             if (request.Guides is { } guides)
